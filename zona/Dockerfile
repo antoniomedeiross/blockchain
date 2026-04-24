@@ -8,7 +8,7 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o server ./server/server.go
+RUN go build -o server ./zona/server/server.go
 
 # runtime stage
 FROM debian:bookworm-slim

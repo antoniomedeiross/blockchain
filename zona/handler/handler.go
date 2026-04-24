@@ -6,8 +6,8 @@ import (
 	"log"
 	"net"
 	"os"
-	"pbl-2/models"
-	"pbl-2/repo"
+	"pbl-2/zona/models"
+	"pbl-2/zona/repo"
 	"strings"
 	"time"
 )
@@ -24,10 +24,8 @@ func ProcessarConexoes(conn net.Conn) {
 	for {
 		msg, err := leitor.ReadString('\n')
 		if err != nil {
-			log.Printf("Peer %s desconectado\n", peerZona)
-
-			// Atualizar status do peer
 			if peerZona != "" {
+				log.Printf("Peer %s desconectado\n", peerZona)
 				repo.Mutex.Lock()
 				if peer, exists := repo.Peers[peerZona]; exists {
 					peer.Alive = false
@@ -35,6 +33,7 @@ func ProcessarConexoes(conn net.Conn) {
 				}
 				repo.Mutex.Unlock()
 			}
+			// sensor desconectou — normal, não loga nada
 			return
 		}
 
@@ -46,7 +45,19 @@ func ProcessarConexoes(conn net.Conn) {
 
 		// Protocolo: primeira mensagem deve ser identificação (IAM:ZONA)
 		if strings.HasPrefix(msg, "IAM:") {
-			peerZona = strings.TrimPrefix(msg, "IAM:")
+			partes := strings.SplitN(strings.TrimPrefix(msg, "IAM:"), ":", 2)
+
+			if partes[0] == "SENSOR" {
+				// É um sensor — só confirma e processa requisições
+				sensorID := partes[1]
+				log.Printf("Sensor conectado: %s\n", sensorID)
+				conn.Write([]byte("OK\n"))
+				// peerZona fica vazio — sensor não é peer
+				continue
+			}
+
+			// É uma zona — fluxo normal
+			peerZona = partes[0]
 			log.Printf("Peer identificado como zona: %s (de %s)\n", peerZona, addr)
 
 			repo.Mutex.Lock()
@@ -59,7 +70,6 @@ func ProcessarConexoes(conn net.Conn) {
 			}
 			repo.Mutex.Unlock()
 
-			// Só confirma — não pede nada
 			conn.Write([]byte("OK\n"))
 			continue
 		}
@@ -113,6 +123,25 @@ func ProcessarConexoes(conn net.Conn) {
 			if data, err := json.Marshal(resposta); err == nil {
 				conn.Write(append(data, '\n'))
 			}
+
+		case "REQUISICAO_DRONE":
+			dadosJSON, _ := json.Marshal(mensagem.Dados)
+			var req models.Requisicao
+			if err := json.Unmarshal(dadosJSON, &req); err != nil {
+				log.Printf("Erro ao parsear REQUISICAO_DRONE: %v\n", err)
+				continue
+			}
+			log.Printf("[ZONA] Requisição do sensor %s — ocorrência: %s, prioridade: %d\n",
+				req.Sensor, req.Ocorrencia, req.Prioridade)
+
+			go func() {
+				drone, ok := repo.SelecionarDroneLivre()
+				if !ok {
+					log.Printf("[ZONA] Nenhum drone livre para sensor %s\n", req.Sensor)
+					return
+				}
+				repo.RicartInstance.IniciarRequisicao(drone.ID)
+			}()
 
 		case "SYNC_REQUEST":
 			// Peer conectou e quer o estado atual dos drones

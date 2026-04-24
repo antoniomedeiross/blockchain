@@ -1,11 +1,12 @@
 version: '3.8'
-
 services:
   peer1:
-    build: .
+    build:
+      context: .
+      dockerfile: zona/Dockerfile
     container_name: peer1
     ports:
-      - "9090:9090" # No seu PC será 9090
+      - "9090:9090"
     environment:
       - PEARS=peer2:9090,peer3:9090
       - MY_ADDR=peer1:9090
@@ -14,10 +15,12 @@ services:
       - pbl-network
 
   peer2:
-    build: .
+    build:
+      context: .
+      dockerfile: zona/Dockerfile
     container_name: peer2
     ports:
-      - "9091:9090" # No seu PC será 9091
+      - "9091:9090"
     environment:
       - PEARS=peer1:9090,peer3:9090
       - MY_ADDR=peer2:9090
@@ -26,14 +29,55 @@ services:
       - pbl-network
 
   peer3:
-    build: .
+    build:
+      context: .
+      dockerfile: zona/Dockerfile
     container_name: peer3
     ports:
-      - "9092:9090" # No seu PC será 9092
+      - "9092:9090"
     environment:
       - PEARS=peer1:9090,peer2:9090
       - MY_ADDR=peer3:9090
       - ZONA=LESTE
+    networks:
+      - pbl-network
+
+  sensor-norte-1:
+    build:
+      context: .
+      dockerfile: sensores/Dockerfile
+    environment:
+      - SENSOR_ID=sensor-norte-1
+      - ZONA=NORTE
+      - SERVIDOR=peer1:9090
+    depends_on:
+      - peer1
+    networks:
+      - pbl-network
+
+  sensor-sul-1:
+    build:
+      context: .
+      dockerfile: sensores/Dockerfile
+    environment:
+      - SENSOR_ID=sensores-sul-1
+      - ZONA=SUL
+      - SERVIDOR=peer2:9090
+    depends_on:
+      - peer2
+    networks:
+      - pbl-network
+
+  sensor-leste-1:
+    build:
+      context: .
+      dockerfile: sensores/Dockerfile
+    environment:
+      - SENSOR_ID=sensor-leste-1
+      - ZONA=LESTE
+      - SERVIDOR=peer3:9090
+    depends_on:
+      - peer3
     networks:
       - pbl-network
 

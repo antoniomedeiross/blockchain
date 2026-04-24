@@ -1,8 +1,8 @@
 package repo
 
 import (
-	"pbl-2/models"
-	"pbl-2/ricart"
+	"pbl-2/zona/models"
+	"pbl-2/zona/ricart"
 	"sync"
 )
 
@@ -33,3 +33,17 @@ func BuscarDrones() map[string]models.Drone {
     }
     return copia
 }
+
+// FUNCAO PARA SELECIONAR UM DRONE LIVRE (USADA NA HMI)
+func SelecionarDroneLivre() (models.Drone, bool) {
+    DroneMutex.RLock()
+    defer DroneMutex.RUnlock()
+
+    for _, drone := range Drones {
+        if drone.Status == models.StatusLivre {
+            return drone, true
+        }
+    }
+    return models.Drone{}, false
+}
+

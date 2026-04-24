@@ -6,10 +6,10 @@ import (
 	"log"
 	"net"
 	"os"
-	"pbl-2/handler"
-	"pbl-2/models"
-	"pbl-2/repo"
-	"pbl-2/ricart"
+	"pbl-2/zona/handler"
+	"pbl-2/zona/models"
+	"pbl-2/zona/repo"
+	"pbl-2/zona/ricart"
 	"strings"
 	"time"
 )
@@ -48,7 +48,6 @@ func conectarAosPeers(peers []string) {
 					time.Sleep(3 * time.Second)
 					continue
 				}
-
 				log.Printf("Sucesso: Conectado ao peer %s\n", addr)
 
 				// 1. Enviar identificação
@@ -147,7 +146,29 @@ func conectarAosPeers(peers []string) {
 							repo.RicartInstance.ReceberReply(ricartMsg.De, ricartMsg.DroneID)
 						case "RELEASE":
 							repo.RicartInstance.ReceberRelease(ricartMsg.De, ricartMsg.DroneID)
+
+						case "REQUISICAO_DRONE":
+							dadosJSON, _ := json.Marshal(mensagem.Dados)
+							var req models.Requisicao
+							if err := json.Unmarshal(dadosJSON, &req); err != nil {
+								log.Printf("Erro ao parsear REQUISICAO_DRONE: %v\n", err)
+								continue
+							}
+							log.Printf("[ZONA] Requisição recebida do sensor %s — ocorrência: %s, prioridade: %d\n",
+								req.Sensor, req.Ocorrencia, req.Prioridade)
+
+							// Dispara alocação de drone
+							go func() {
+								drone, ok := repo.SelecionarDroneLivre()
+								if !ok {
+									log.Printf("[ZONA] Nenhum drone livre para atender sensor %s — enfileirando\n", req.Sensor)
+									// fila vem no próximo passo
+									return
+								}
+								repo.RicartInstance.IniciarRequisicao(drone.ID)
+							}()
 						}
+
 					}
 
 				}
@@ -246,8 +267,17 @@ func main() {
 		},
 
 		AoAlocar: func(droneID string) {
+			// Verifica se o drone ainda está livre
 			repo.DroneMutex.Lock()
-			drone := repo.Drones[droneID]
+			drone, existe := repo.Drones[droneID]
+			if !existe || drone.Status != models.StatusLivre {
+				repo.DroneMutex.Unlock()
+				log.Printf("[MAIN] Drone %s já foi alocado por outra zona, tentando outro...\n", droneID)
+				repo.RicartInstance.AoFalharAlocacao()
+				return
+			}
+
+			// Drone livre — aloca
 			drone.Status = models.StatusOcupado
 			drone.ZonaAtual = getZona()
 			repo.Drones[droneID] = drone
@@ -256,59 +286,102 @@ func main() {
 			BroadcastDroneUpdate(drone)
 			log.Printf("[MAIN] Drone %s alocado com sucesso!\n", droneID)
 
+			// Simula uso
 			time.Sleep(10 * time.Second)
+
+			// Libera
+			repo.DroneMutex.Lock()
+			drone.Status = models.StatusLivre
+			drone.ZonaAtual = drone.ZonaBase
+			repo.Drones[droneID] = drone
+			repo.DroneMutex.Unlock()
+
+			BroadcastDroneUpdate(drone)
 			repo.RicartInstance.Liberar(droneID)
+		},
+
+		AoFalharAlocacao: func() {
+			// Tenta outro drone livre
+			time.Sleep(1 * time.Second) // pequeno delay antes de tentar de novo
+			drone, ok := repo.SelecionarDroneLivre()
+			if !ok {
+				log.Printf("[MAIN] Nenhum drone livre disponível, aguardando...\n")
+				// Agenda nova tentativa
+				go func() {
+					time.Sleep(5 * time.Second)
+					repo.RicartInstance.AoFalharAlocacao()
+				}()
+				return
+			}
+			log.Printf("[MAIN] Tentando novo drone: %s\n", drone.ID)
+			repo.RicartInstance.IniciarRequisicao(drone.ID)
+		},
+
+		// PeersAtivos: func() []string {
+		PeersAtivos: func() []string {
+			repo.Mutex.RLock()
+			defer repo.Mutex.RUnlock()
+			lista := []string{}
+			for id, peer := range repo.Peers {
+				if peer.Alive {
+					lista = append(lista, id)
+				}
+			}
+			return lista
 		},
 	}
 
-	// Enviar heartbeat periodicamente /////////////////////////////////////////////////////////////////////////
-	go func() {
-		minhaZona := getZona()
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
+	// // Enviar heartbeat periodicamente /////////////////////////////////////////////////////////////////////////
+	// go func() {
+	// 	minhaZona := getZona()
+	// 	ticker := time.NewTicker(15 * time.Second)
+	// 	defer ticker.Stop()
 
-		for range ticker.C {
-			mensagem := models.Mensagem{
-				Tipo:      "HEARTBEAT",
-				De:        minhaZona,
-				Para:      "", // broadcast
-				Dados:     nil,
-				Timestamp: time.Now(),
-			}
-			enviarParaTodos(mensagem)
-		}
-	}()
+	// 	for range ticker.C {
+	// 		mensagem := models.Mensagem{
+	// 			Tipo:      "HEARTBEAT",
+	// 			De:        minhaZona,
+	// 			Para:      "", // broadcast
+	// 			Dados:     nil,
+	// 			Timestamp: time.Now(),
+	// 		}
+	// 		enviarParaTodos(mensagem)
+	// 	}
+	// }()
 
 	// Enviar dados customizados periodicamente ////////////////////////////////////////////////////////////////
-	go func() {
-		minhaZona := getZona()
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
+	// go func() {
+	// 	minhaZona := getZona()
+	// 	ticker := time.NewTicker(10 * time.Second)
+	// 	defer ticker.Stop()
 
-		for range ticker.C {
-			mensagem := models.Mensagem{
-				Tipo:      "DATA",
-				De:        minhaZona,
-				Para:      "", // broadcast
-				Dados:     map[string]string{"status": "online", "timestamp": time.Now().String()},
-				Timestamp: time.Now(),
-			}
-			enviarParaTodos(mensagem)
-		}
-	}()
+	// 	for range ticker.C {
+	// 		mensagem := models.Mensagem{
+	// 			Tipo:      "DATA",
+	// 			De:        minhaZona,
+	// 			Para:      "", // broadcast
+	// 			Dados:     map[string]string{"status": "online", "timestamp": time.Now().String()},
+	// 			Timestamp: time.Now(),
+	// 		}
+	// 		enviarParaTodos(mensagem)
+	// 	}
+	// }()
 
-	// TESTE ALOCACAO DE DRONES
-	go func() {
-		time.Sleep(30 * time.Second) // espera a rede estabilizar
-		ticker := time.NewTicker(25 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			// Tenta alocar um drone da própria zona
-			droneID := getZona() + "-drone-01"
-			log.Printf("[TEST] Iniciando requisição Ricart para %s\n", droneID)
-			repo.RicartInstance.IniciarRequisicao(droneID)
-		}
-	}()
+	// // TESTE ALOCACAO DE DRONES
+	// go func() {
+	// 	time.Sleep(30 * time.Second)
+	// 	ticker := time.NewTicker(25 * time.Second)
+	// 	defer ticker.Stop()
+	// 	for range ticker.C {
+	// 		drone, ok := repo.SelecionarDroneLivre()
+	// 		if !ok {
+	// 			log.Printf("[TEST] Nenhum drone livre disponível\n")
+	// 			continue
+	// 		}
+	// 		log.Printf("[TEST] Drone livre encontrado: %s — iniciando requisição\n", drone.ID)
+	// 		repo.RicartInstance.IniciarRequisicao(drone.ID)
+	// 	}
+	// }()
 
 	// debug ///////////////////////////////////////////////////////////////////////////
 	go func() {

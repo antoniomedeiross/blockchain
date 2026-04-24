@@ -16,6 +16,15 @@ type Peer struct {
 }
 
 
+type Requisicao struct {
+    Tipo       string    `json:"tipo"`
+    Sensor     string    `json:"sensor"`
+    Zona       string    `json:"zona"`
+    Ocorrencia string    `json:"ocorrencia"`
+    Prioridade int       `json:"prioridade"`
+    Timestamp  time.Time `json:"timestamp"`
+}
+
 // STRUCT DO DRONEEEEEE
 
 type DroneStatus string
