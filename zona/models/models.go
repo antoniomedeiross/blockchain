@@ -97,3 +97,19 @@ type MensagemRicart struct {
     DroneID   string `json:"drone_id"`  // qual drone está sendo disputado
     Timestamp int64  `json:"timestamp"` // relógio de Lamport
 }
+
+
+// MISSAO DRONE
+type Missao struct {
+	RequisicaoID string `json:"requisicao_id"`
+	Ocorrencia   string `json:"ocorrencia"`
+	Prioridade   int    `json:"prioridade"`
+}
+
+type MensagemDrone struct {
+	Tipo      string      `json:"tipo"`
+	De        string      `json:"de"`
+	DroneID   string      `json:"drone_id"`
+	Dados     interface{} `json:"dados,omitempty"`
+	Timestamp time.Time   `json:"timestamp"`
+}

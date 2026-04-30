@@ -165,8 +165,23 @@ func conectarAosPeers(peers []string) {
 									// fila vem no próximo passo
 									return
 								}
-								repo.RicartInstance.IniciarRequisicao(drone.ID)
+								repo.RicartInstance.IniciarRequisicao(drone.ID, req)
 							}()
+						}
+					case "DESPACHAR_DRONE":
+						dadosJSON, _ := json.Marshal(mensagem.Dados)
+						var missao models.MensagemDrone
+						if err := json.Unmarshal(dadosJSON, &missao); err != nil {
+							log.Printf("Erro ao parsear DESPACHAR_DRONE: %v\n", err)
+							continue
+						}
+
+						log.Printf("[P2P] Recebi ordem externa para despachar MEU drone %s\n", missao.DroneID)
+
+						// Pega a struct, transforma em byte de novo e joga no socket do drone físico
+						data, _ := json.Marshal(missao)
+						if !repo.EnviarParaDrone(missao.DroneID, data) {
+							log.Printf("ERRO: Drone %s não está conectado no servidor para receber a missão\n", missao.DroneID)
 						}
 
 					}
@@ -267,37 +282,48 @@ func main() {
 		},
 
 		AoAlocar: func(droneID string) {
-			// Verifica se o drone ainda está livre
 			repo.DroneMutex.Lock()
 			drone, existe := repo.Drones[droneID]
 			if !existe || drone.Status != models.StatusLivre {
 				repo.DroneMutex.Unlock()
-				log.Printf("[MAIN] Drone %s já foi alocado por outra zona, tentando outro...\n", droneID)
 				repo.RicartInstance.AoFalharAlocacao()
 				return
 			}
-
-			// Drone livre — aloca
 			drone.Status = models.StatusOcupado
 			drone.ZonaAtual = getZona()
 			repo.Drones[droneID] = drone
 			repo.DroneMutex.Unlock()
 
 			BroadcastDroneUpdate(drone)
-			log.Printf("[MAIN] Drone %s alocado com sucesso!\n", droneID)
+			log.Printf("[MAIN] Drone %s alocado via ricart\n", droneID)
 
-			// Simula uso
-			time.Sleep(10 * time.Second)
+			reqAtual := repo.RicartInstance.RequisicaoAtual
+			missao := models.MensagemDrone{
+				Tipo:    "MISSAO",
+				De:      getZona(),
+				DroneID: droneID,
+				Dados: models.Missao{
+					RequisicaoID: reqAtual.Sensor,
+					Ocorrencia:   reqAtual.Ocorrencia,
+					Prioridade:   reqAtual.Prioridade,
+				},
+				Timestamp: time.Now(),
+			}
 
-			// Libera
-			repo.DroneMutex.Lock()
-			drone.Status = models.StatusLivre
-			drone.ZonaAtual = drone.ZonaBase
-			repo.Drones[droneID] = drone
-			repo.DroneMutex.Unlock()
-
-			BroadcastDroneUpdate(drone)
-			repo.RicartInstance.Liberar(droneID)
+			// TENTA ENVIAR DIRETO (se estiver conectado no meu socket TCP)
+			data, _ := json.Marshal(missao)
+			if repo.EnviarParaDrone(droneID, data) {
+				log.Printf("[MAIN] Missão enviada DIRETAMENTE para o drone local %s\n", droneID)
+			} else {
+				// DRONE REMOTO! Peço para o broker que está hospedando ele repassar a mensagem.
+				log.Printf("[MAIN] Drone %s é remoto. Repassando comando para a zona %s\n", droneID, drone.ZonaBase)
+				enviarParaZona(drone.ZonaBase, models.Mensagem{
+					Tipo:  "DESPACHAR_DRONE",
+					De:    getZona(),
+					Para:  drone.ZonaBase,
+					Dados: missao,
+				})
+			}
 		},
 
 		AoFalharAlocacao: func() {
@@ -314,7 +340,7 @@ func main() {
 				return
 			}
 			log.Printf("[MAIN] Tentando novo drone: %s\n", drone.ID)
-			repo.RicartInstance.IniciarRequisicao(drone.ID)
+			repo.RicartInstance.IniciarRequisicao(drone.ID, *repo.RicartInstance.RequisicaoAtual)
 		},
 
 		// PeersAtivos: func() []string {
@@ -330,6 +356,9 @@ func main() {
 			return lista
 		},
 	}
+
+	// Configura função de broadcast para o Ricart
+	repo.BroadcastFn = BroadcastDroneUpdate
 
 	// // Enviar heartbeat periodicamente /////////////////////////////////////////////////////////////////////////
 	// go func() {
@@ -405,8 +434,6 @@ func main() {
 			})
 		}
 	}()
-
-	seedDrones()
 
 	// Abrir servidor para escutar conexoes
 	listner, err := net.Listen("tcp", ":9090")

@@ -81,6 +81,78 @@ services:
     networks:
       - pbl-network
 
+  drone-norte-1:
+    build:
+      context: .
+      dockerfile: drones/Dockerfile
+    environment:
+      - DRONE_ID=NORTE-drone-01
+      - SERVIDOR=peer1:9090
+    depends_on:
+      - peer1
+    networks:
+      - pbl-network
+
+  drone-norte-2:
+    build:
+      context: .
+      dockerfile: drones/Dockerfile
+    environment:
+      - DRONE_ID=NORTE-drone-02
+      - SERVIDOR=peer1:9090
+    depends_on:
+      - peer1
+    networks:
+      - pbl-network
+
+  drone-sul-1:
+    build:
+      context: .
+      dockerfile: drones/Dockerfile
+    environment:
+      - DRONE_ID=SUL-drone-01
+      - SERVIDOR=peer2:9090
+    depends_on:
+      - peer2
+    networks:
+      - pbl-network
+
+  drone-sul-2:
+    build:
+      context: .
+      dockerfile: drones/Dockerfile
+    environment:
+      - DRONE_ID=SUL-drone-02
+      - SERVIDOR=peer2:9090
+    depends_on:
+      - peer2
+    networks:
+      - pbl-network
+
+  drone-leste-1:
+    build:
+      context: .
+      dockerfile: drones/Dockerfile
+    environment:
+      - DRONE_ID=LESTE-drone-01
+      - SERVIDOR=peer3:9090
+    depends_on:
+      - peer3
+    networks:
+      - pbl-network
+
+  drone-leste-2:
+    build:
+      context: .
+      dockerfile: drones/Dockerfile
+    environment:
+      - DRONE_ID=LESTE-drone-02
+      - SERVIDOR=peer3:9090
+    depends_on:
+      - peer3
+    networks:
+      - pbl-network
+
 networks:
   pbl-network:
     driver: bridge

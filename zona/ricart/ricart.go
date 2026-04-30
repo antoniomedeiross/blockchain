@@ -19,7 +19,7 @@ type Ricart struct {
 	FilaAdiados        []string        // zonas que tiveram REPLY segurado
 	EsperandoResposta  map[string]bool // peers que ainda não responderam
 
-	mu sync.Mutex
+	Mu sync.Mutex
 
 	// função injetada para enviar mensagens — evita dependência circular
 	EnviarParaZona   func(zonaID string, msg models.Mensagem)
@@ -28,17 +28,21 @@ type Ricart struct {
 	AoFalharAlocacao func()               //  chamado quando drone já foi pego
 	TotalPeers       func() int           // injetando
 	PeersAtivos      func() []string      // injetando também
+
+	RequisicaoAtual *models.Requisicao // requisição que originou o REQUEST
 }
 
 // IniciarRequisicao — zona quer alocar um drone
-func (r *Ricart) IniciarRequisicao(droneID string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *Ricart) IniciarRequisicao(droneID string, req models.Requisicao) {
+	r.Mu.Lock()
+	defer r.Mu.Unlock()
 
 	if r.Estado == models.EstadoQuerendo || r.Estado == models.EstadoNaSecao {
 		log.Printf("[RICART] Já existe uma requisição em andamento, ignorando\n")
 		return
 	}
+
+	r.RequisicaoAtual = &req // ← só salva se vai de fato iniciar
 
 	r.RelogioLamport++
 	r.TimestampRequisicao = r.RelogioLamport
@@ -47,7 +51,6 @@ func (r *Ricart) IniciarRequisicao(droneID string) {
 	r.RespostasRecebidas = 0
 	r.FilaAdiados = []string{}
 
-	// Marca quem você está esperando
 	r.EsperandoResposta = make(map[string]bool)
 	for _, peer := range r.PeersAtivos() {
 		r.EsperandoResposta[peer] = true
@@ -68,14 +71,13 @@ func (r *Ricart) IniciarRequisicao(droneID string) {
 	}
 	r.EnviarParaTodos(msg)
 
-	// Dispara o watchdog em goroutine separada
-	go r.watchdog(droneID, r.TimestampRequisicao, 15*time.Second)
+	go r.watchdog(droneID, r.TimestampRequisicao, 30*time.Second)
 }
 
 // ReceberRequest — chegou um REQUEST de outro peer
 func (r *Ricart) ReceberRequest(de string, droneID string, timestampDele int64) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.Mu.Lock()
+	defer r.Mu.Unlock()
 
 	// Atualiza relógio de Lamport
 	if timestampDele > r.RelogioLamport {
@@ -106,8 +108,8 @@ func (r *Ricart) ReceberRequest(de string, droneID string, timestampDele int64) 
 
 // ReceberReply — chegou um REPLY de outro peer
 func (r *Ricart) ReceberReply(de string, droneID string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.Mu.Lock()
+	defer r.Mu.Unlock()
 
 	if r.Estado != models.EstadoQuerendo || r.DroneAlvo != droneID {
 		return
@@ -135,14 +137,17 @@ func (r *Ricart) ReceberRelease(de string, droneID string) {
 
 // Liberar — chama após terminar de usar o drone
 func (r *Ricart) Liberar(droneID string) {
-	r.mu.Lock()
-	adiados := r.FilaAdiados
-	r.FilaAdiados = []string{}
-	r.Estado = models.EstadoLivre
-	r.DroneAlvo = ""
-	r.mu.Unlock()
+	r.Mu.Lock()
+    // Limpa TUDO para a próxima requisição poder entrar
+    r.Estado = models.EstadoLivre
+    r.DroneAlvo = ""
+    r.RequisicaoAtual = nil 
+    r.RespostasRecebidas = 0
+    adiados := r.FilaAdiados
+    r.FilaAdiados = []string{}
+    r.Mu.Unlock()
 
-	log.Printf("[RICART] Liberando drone %s, enviando REPLY para %d adiados\n", droneID, len(adiados))
+    log.Printf("[RICART] Reset completo. Pronto para nova requisição.")
 
 	// Envia RELEASE para todos
 	r.EnviarParaTodos(models.Mensagem{
@@ -159,6 +164,7 @@ func (r *Ricart) Liberar(droneID string) {
 	for _, zona := range adiados {
 		r.enviarReply(zona, droneID)
 	}
+
 }
 
 // enviarReply — internal
@@ -178,8 +184,8 @@ func (r *Ricart) enviarReply(para string, droneID string) {
 func (r *Ricart) watchdog(droneID string, timestampOriginal int64, timeout time.Duration) {
 	time.Sleep(timeout)
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.Mu.Lock()
+	defer r.Mu.Unlock()
 
 	// Verifica se ainda é a mesma requisição ativa
 	if r.Estado != models.EstadoQuerendo ||

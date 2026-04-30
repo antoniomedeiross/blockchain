@@ -47,6 +47,7 @@ func ProcessarConexoes(conn net.Conn) {
 		if strings.HasPrefix(msg, "IAM:") {
 			partes := strings.SplitN(strings.TrimPrefix(msg, "IAM:"), ":", 2)
 
+			// SE FOR UN SENSOR
 			if partes[0] == "SENSOR" {
 				// É um sensor — só confirma e processa requisições
 				sensorID := partes[1]
@@ -54,6 +55,30 @@ func ProcessarConexoes(conn net.Conn) {
 				conn.Write([]byte("OK\n"))
 				// peerZona fica vazio — sensor não é peer
 				continue
+			}
+
+			// SE FOR UM DRONE
+			if partes[0] == "DRONE" {
+				droneID := partes[1]
+				log.Printf("Drone conectado: %s\n", droneID)
+
+				repo.RegistrarConexaoDrone(droneID, conn)
+
+				repo.DroneMutex.Lock()
+				repo.Drones[droneID] = models.Drone{
+					ID:        droneID,
+					Status:    models.StatusLivre,
+					ZonaBase:  getZonaAtual(),
+					ZonaAtual: getZonaAtual(),
+				}
+				repo.DroneMutex.Unlock()
+
+				repo.BroadcastFn(repo.Drones[droneID])
+				conn.Write([]byte("OK\n"))
+
+				// Bloqueia aqui até o drone desconectar — NÃO usa goroutine
+				processarDrone(droneID, conn, leitor)
+				return // só sai depois que o drone cair
 			}
 
 			// É uma zona — fluxo normal
@@ -131,17 +156,29 @@ func ProcessarConexoes(conn net.Conn) {
 				log.Printf("Erro ao parsear REQUISICAO_DRONE: %v\n", err)
 				continue
 			}
-			log.Printf("[ZONA] Requisição do sensor %s — ocorrência: %s, prioridade: %d\n",
-				req.Sensor, req.Ocorrencia, req.Prioridade)
+			log.Printf("[ZONA] Nova requisição do sensor %s ENFILEIRADA — prioridade: %d\n", req.Sensor, req.Prioridade)
 
-			go func() {
-				drone, ok := repo.SelecionarDroneLivre()
-				if !ok {
-					log.Printf("[ZONA] Nenhum drone livre para sensor %s\n", req.Sensor)
-					return
-				}
-				repo.RicartInstance.IniciarRequisicao(drone.ID)
-			}()
+			// Coloca na fila de prioridade
+			repo.Enfileirar(req)
+
+			// Tenta processar. Se o Ricart estiver ocupado, ela morre e a fila guarda o pedido.
+			go repo.TentarAlocarDaFila()
+
+		case "DESPACHAR_DRONE":
+			// Outra zona alocou MEU drone e me pediu para entregar a missão a ele
+			dadosJSON, _ := json.Marshal(mensagem.Dados)
+			var missao models.MensagemDrone
+			if err := json.Unmarshal(dadosJSON, &missao); err != nil {
+				continue
+			}
+
+			log.Printf("[%s] Recebi ordem externa para despachar MEU drone físico %s\n", peerZona, missao.DroneID)
+
+			// Agora sim, o conn.Write vai funcionar, porque o drone tá conectado aqui!
+			data, _ := json.Marshal(missao)
+			if !repo.EnviarParaDrone(missao.DroneID, data) {
+				log.Printf("ERRO CRÍTICO: Não consegui repassar missão ao drone local %s\n", missao.DroneID)
+			}
 
 		case "SYNC_REQUEST":
 			// Peer conectou e quer o estado atual dos drones
@@ -238,4 +275,91 @@ func getZonaAtual() string {
 		return "DESCONHECIDA"
 	}
 	return zona
+}
+
+// FUNCOES
+func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
+	defer func() {
+		log.Printf("Drone %s desconectado\n", droneID)
+		repo.RemoverConexaoDrone(droneID)
+
+		// Marca drone como offline e propaga
+		repo.DroneMutex.Lock()
+		if d, ok := repo.Drones[droneID]; ok {
+			d.Status = models.StatusOffline
+			repo.Drones[droneID] = d
+		}
+		repo.DroneMutex.Unlock()
+		conn.Close()
+	}()
+
+	for {
+		msg, err := leitor.ReadString('\n')
+		if err != nil {
+			return
+		}
+		msg = strings.TrimSpace(msg)
+		if msg == "" {
+			continue
+		}
+
+		var mensagem models.MensagemDrone
+		if err := json.Unmarshal([]byte(msg), &mensagem); err != nil {
+			continue
+		}
+
+		switch mensagem.Tipo {
+		case "MISSAO_CONCLUIDA":
+			log.Printf("[DRONE %s] Missão concluída — liberando\n", droneID)
+
+			repo.DroneMutex.Lock()
+			d := repo.Drones[droneID]
+			d.Status = models.StatusLivre // Atualiza estado local
+			d.ZonaAtual = d.ZonaBase
+			repo.Drones[droneID] = d
+			repo.DroneMutex.Unlock()
+
+			// IMPORTANTE: Você precisa avisar os outros peers que esse drone está livre!
+			repo.BroadcastFn(d)
+
+			// Agora sim, libera o Ricart-Agrawala para responder os REPLYs pendentes
+			repo.RicartInstance.Liberar(droneID)
+
+			// 2. Avisa toda a rede que o drone está livre
+			repo.BroadcastFn(d)
+
+			// 3. Libera o lock distribuído no Ricart-Agrawala
+			repo.RicartInstance.Liberar(droneID)
+
+			// 4. A MÁGICA AQUI: Tenta puxar a próxima requisição da fila!
+			// Como o handler já conhece o repo, não há erro de importação.
+			go func() {
+				// Delay rápido para dar tempo de o "livre" chegar nos outros brokers via TCP
+				time.Sleep(500 * time.Millisecond)
+				repo.TentarAlocarDaFila()
+			}()
+
+		case "GET_PEERS_LIST":
+			// DRONE QUER A LISTA DE PEERS ATIVOS PARA SE COMUNICAR DIRETAMENTE COM ELES (RICART-AGRAWALA)
+			repo.Mutex.RLock()
+			var lista []string
+			for _, peer := range repo.Peers {
+				if peer.Alive {
+					lista = append(lista, peer.Address)
+				}
+			}
+			repo.Mutex.RUnlock()
+
+			// Adiciona o próprio broker na lista também
+			lista = append(lista, getZonaAtual()+":9090") // Ajuste conforme seu IP interno
+
+			resposta := models.Mensagem{
+				Tipo:  "PEERS_LIST_RESPONSE",
+				De:    getZonaAtual(),
+				Dados: lista,
+			}
+			data, _ := json.Marshal(resposta)
+			conn.Write(append(data, '\n'))
+		}
+	}
 }
