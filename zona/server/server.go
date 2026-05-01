@@ -52,7 +52,8 @@ func conectarAosPeers(peers []string) {
 
 				// 1. Enviar identificação
 				minhaZona := getZona()
-				conn.Write([]byte("IAM:" + minhaZona + "\n"))
+				meuAddr := os.Getenv("MY_ADDR") 
+				conn.Write([]byte("IAM:PEER:" + minhaZona + ":" + meuAddr + "\n"))
 
 				// 2. Aguardar confirmação
 				leitor := bufio.NewReader(conn)

@@ -45,7 +45,7 @@ func ProcessarConexoes(conn net.Conn) {
 
 		// Protocolo: primeira mensagem deve ser identificação (IAM:ZONA)
 		if strings.HasPrefix(msg, "IAM:") {
-			partes := strings.SplitN(strings.TrimPrefix(msg, "IAM:"), ":", 2)
+			partes := strings.SplitN(strings.TrimPrefix(msg, "IAM:"), ":", 3)
 
 			// SE FOR UN SENSOR
 			if partes[0] == "SENSOR" {
@@ -81,22 +81,26 @@ func ProcessarConexoes(conn net.Conn) {
 				return // só sai depois que o drone cair
 			}
 
-			// É uma zona — fluxo normal
-			peerZona = partes[0]
-			log.Printf("Peer identificado como zona: %s (de %s)\n", peerZona, addr)
+			// SE FOR UM PEER (NOVO FLUXO)
+			if partes[0] == "PEER" {
+				peerZona = partes[1]
+				listenAddr := partes[2] // Aqui está o IP real de escuta! (Ex: peer1:9090)
 
-			repo.Mutex.Lock()
-			repo.Peers[peerZona] = models.Peer{
-				ZoneID:   peerZona,
-				Address:  addr,
-				Alive:    true,
-				LastSeen: time.Now(),
-				Conn:     conn,
+				log.Printf("Peer %s conectado. IP Oficial de Escuta: %s\n", peerZona, listenAddr)
+
+				repo.Mutex.Lock()
+				repo.Peers[peerZona] = models.Peer{
+					ZoneID:   peerZona,
+					Address:  listenAddr, // <-- O SEGREDO: Salva a porta certa, não a efêmera
+					Alive:    true,
+					LastSeen: time.Now(),
+					Conn:     conn,
+				}
+				repo.Mutex.Unlock()
+
+				conn.Write([]byte("OK\n"))
+				continue
 			}
-			repo.Mutex.Unlock()
-
-			conn.Write([]byte("OK\n"))
-			continue
 		}
 
 		// Mensagens subsequentes (JSON)
@@ -340,7 +344,6 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 			}()
 
 		case "GET_PEERS_LIST":
-			// DRONE QUER A LISTA DE PEERS ATIVOS PARA SE COMUNICAR DIRETAMENTE COM ELES (RICART-AGRAWALA)
 			repo.Mutex.RLock()
 			var lista []string
 			for _, peer := range repo.Peers {
@@ -350,10 +353,11 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 			}
 			repo.Mutex.RUnlock()
 
-			// Adiciona o próprio broker na lista também
-			lista = append(lista, getZonaAtual()+":9090") // Ajuste conforme seu IP interno
+			// Adiciona o próprio broker na lista usando a variável de rede correta
+			meuAddr := os.Getenv("MY_ADDR")
+			lista = append(lista, meuAddr)
 
-			resposta := models.Mensagem{
+			resposta := models.MensagemDrone{
 				Tipo:  "PEERS_LIST_RESPONSE",
 				De:    getZonaAtual(),
 				Dados: lista,
