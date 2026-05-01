@@ -287,7 +287,10 @@ func main() {
 			drone, existe := repo.Drones[droneID]
 			if !existe || drone.Status != models.StatusLivre {
 				repo.DroneMutex.Unlock()
-				repo.RicartInstance.AoFalharAlocacao()
+				// IMPORTANTE: libera a seção crítica antes de tentar novamente
+				// Sem isso, os REPLYs adiados nunca são enviados e os peers ficam travados
+				repo.RicartInstance.Liberar(droneID)
+				go repo.TentarAlocarDaFila()
 				return
 			}
 			drone.Status = models.StatusOcupado
@@ -315,8 +318,11 @@ func main() {
 			data, _ := json.Marshal(missao)
 			if repo.EnviarParaDrone(droneID, data) {
 				log.Printf("[MAIN] Missão enviada DIRETAMENTE para o drone local %s\n", droneID)
+				// Drone local: Liberar é chamado quando MISSAO_CONCLUIDA chegar via processarDrone
 			} else {
-				// DRONE REMOTO! Peço para o broker que está hospedando ele repassar a mensagem.
+				// DRONE REMOTO: despacha e já libera a seção crítica.
+				// A zona hospedeira cuidará do MISSAO_CONCLUIDA e enviará RELEASE via seu próprio Liberar.
+				// Se não liberarmos aqui, ficamos NA_SECAO para sempre esperando um evento que nunca chega.
 				log.Printf("[MAIN] Drone %s é remoto. Repassando comando para a zona %s\n", droneID, drone.ZonaBase)
 				enviarParaZona(drone.ZonaBase, models.Mensagem{
 					Tipo:  "DESPACHAR_DRONE",
@@ -324,24 +330,14 @@ func main() {
 					Para:  drone.ZonaBase,
 					Dados: missao,
 				})
+				repo.RicartInstance.Liberar(droneID)
 			}
 		},
 
 		AoFalharAlocacao: func() {
-			// Tenta outro drone livre
-			time.Sleep(1 * time.Second) // pequeno delay antes de tentar de novo
-			drone, ok := repo.SelecionarDroneLivre()
-			if !ok {
-				log.Printf("[MAIN] Nenhum drone livre disponível, aguardando...\n")
-				// Agenda nova tentativa
-				go func() {
-					time.Sleep(5 * time.Second)
-					repo.RicartInstance.AoFalharAlocacao()
-				}()
-				return
-			}
-			log.Printf("[MAIN] Tentando novo drone: %s\n", drone.ID)
-			repo.RicartInstance.IniciarRequisicao(drone.ID, *repo.RicartInstance.RequisicaoAtual)
+			// Não faz mais nada — AoAlocar já chama Liberar + TentarAlocarDaFila
+			// Este callback só existe para compatibilidade
+			log.Printf("[MAIN] AoFalharAlocacao chamado (não deve mais ocorrer)\n")
 		},
 
 		// PeersAtivos: func() []string {
@@ -355,6 +351,10 @@ func main() {
 				}
 			}
 			return lista
+		},
+		TentarAlocar: func() {
+			time.Sleep(200 * time.Millisecond) // pequeno delay para o DRONE_UPDATE chegar antes
+			repo.TentarAlocarDaFila()
 		},
 	}
 

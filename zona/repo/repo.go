@@ -1,12 +1,36 @@
 package repo
 
 import (
+	"container/heap"
 	"log"
 	"net"
 	"pbl-2/zona/models"
 	"pbl-2/zona/ricart"
 	"sync"
 )
+
+// --- Heap de prioridade para requisições ---
+
+type FilaHeap []models.Requisicao
+
+func (f FilaHeap) Len() int { return len(f) }
+
+// Maior prioridade sai primeiro (max-heap)
+func (f FilaHeap) Less(i, j int) bool { return f[i].Prioridade > f[j].Prioridade }
+
+func (f FilaHeap) Swap(i, j int) { f[i], f[j] = f[j], f[i] }
+
+func (f *FilaHeap) Push(x any) {
+	*f = append(*f, x.(models.Requisicao))
+}
+
+func (f *FilaHeap) Pop() any {
+	old := *f
+	n := len(old)
+	item := old[n-1]
+	*f = old[:n-1]
+	return item
+}
 
 // PEARS -------------------------------------------------------------
 var Mutex sync.RWMutex
@@ -80,24 +104,27 @@ func EnviarParaDrone(droneID string, msg []byte) bool {
 	return err == nil
 }
 
-// lista prioridade
-var RequisicoesPendentes []models.Requisicao
+// Fila de prioridade (heap)
+var RequisicoesPendentes = &FilaHeap{}
 var FilaMutex sync.Mutex
+
+func init() {
+	heap.Init(RequisicoesPendentes)
+}
 
 func Enfileirar(req models.Requisicao) {
 	FilaMutex.Lock()
-	RequisicoesPendentes = append(RequisicoesPendentes, req)
+	heap.Push(RequisicoesPendentes, req)
 	FilaMutex.Unlock()
 }
 
 func ProximaRequisicao() (models.Requisicao, bool) {
 	FilaMutex.Lock()
 	defer FilaMutex.Unlock()
-	if len(RequisicoesPendentes) == 0 {
+	if RequisicoesPendentes.Len() == 0 {
 		return models.Requisicao{}, false
 	}
-	req := RequisicoesPendentes[0]
-	RequisicoesPendentes = RequisicoesPendentes[1:]
+	req := heap.Pop(RequisicoesPendentes).(models.Requisicao)
 	return req, true
 }
 
@@ -107,7 +134,7 @@ func TentarAlocarDaFila() {
 	estado := RicartInstance.Estado
 	RicartInstance.Mu.Unlock()
 
-	log.Printf("[DEBUG-FILA] Acionado! Estado Ricart: %s | Tamanho da Fila: %d\n", estado, len(RequisicoesPendentes))
+	log.Printf("[DEBUG-FILA] Acionado! Estado Ricart: %s | Tamanho da Fila: %d\n", estado, RequisicoesPendentes.Len())
 
 	if estado != models.EstadoLivre {
 		return
@@ -129,7 +156,6 @@ func TentarAlocarDaFila() {
 	log.Printf("[FILA] Disparando Ricart para prioridade %d (%s)", req.Prioridade, req.Ocorrencia)
 	RicartInstance.IniciarRequisicao(drone.ID, req)
 	log.Printf("[DEBUG-FILA] Sucesso! Iniciando Ricart para o drone %s\n", drone.ID)
-	RicartInstance.IniciarRequisicao(drone.ID, req)
 }
 
 //

@@ -28,6 +28,7 @@ type Ricart struct {
 	AoFalharAlocacao func()               //  chamado quando drone já foi pego
 	TotalPeers       func() int           // injetando
 	PeersAtivos      func() []string      // injetando também
+	TentarAlocar     func()               // callback para processar fila após RELEASE recebido
 
 	RequisicaoAtual *models.Requisicao // requisição que originou o REQUEST
 }
@@ -131,8 +132,29 @@ func (r *Ricart) ReceberReply(de string, droneID string) {
 // ReceberRelease — peer liberou o drone
 func (r *Ricart) ReceberRelease(de string, droneID string) {
 	log.Printf("[RICART] RELEASE recebido de %s para drone %s\n", de, droneID)
-	// O estado do drone já será atualizado via DRONE_UPDATE
-	// Nada a fazer aqui além de logar
+
+	r.Mu.Lock()
+	// Se estávamos QUERENDO e este peer ainda não tinha respondido, conta como REPLY implícito
+	if r.Estado == models.EstadoQuerendo && r.DroneAlvo == droneID {
+		if r.EsperandoResposta[de] {
+			delete(r.EsperandoResposta, de)
+			r.RespostasRecebidas++
+			log.Printf("[RICART] RELEASE de %s conta como REPLY implícito (%d/%d)\n", de, r.RespostasRecebidas, r.TotalPeers())
+			if r.RespostasRecebidas >= r.TotalPeers() {
+				r.Estado = models.EstadoNaSecao
+				log.Printf("[RICART] Quorum atingido via RELEASE! Alocando drone %s\n", droneID)
+				r.Mu.Unlock()
+				go r.AoAlocar(droneID)
+				return
+			}
+		}
+	}
+	r.Mu.Unlock()
+
+	// Se estamos LIVRES, tenta processar a fila local
+	if r.TentarAlocar != nil {
+		go r.TentarAlocar()
+	}
 }
 
 // Liberar — chama após terminar de usar o drone

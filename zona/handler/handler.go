@@ -323,12 +323,6 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 			repo.Drones[droneID] = d
 			repo.DroneMutex.Unlock()
 
-			// IMPORTANTE: Você precisa avisar os outros peers que esse drone está livre!
-			repo.BroadcastFn(d)
-
-			// Agora sim, libera o Ricart-Agrawala para responder os REPLYs pendentes
-			repo.RicartInstance.Liberar(droneID)
-
 			// 2. Avisa toda a rede que o drone está livre
 			repo.BroadcastFn(d)
 
