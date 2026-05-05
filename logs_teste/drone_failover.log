@@ -1,0 +1,34 @@
+time="2026-05-01T21:59:53-03:00" level=warning msg="/home/antonio/uefs/V-semestre/redes/pbl-2/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+drone-norte-1-1  | 2026/05/02 00:57:33 [DRONE NORTE-drone-01] Iniciando...
+drone-norte-1-1  | 2026/05/02 00:57:38 [DRONE NORTE-drone-01] Conectado em peer1:9090
+drone-norte-1-1  | 2026/05/02 00:57:38 [DRONE NORTE-drone-01] Identificado com sucesso
+drone-norte-1-1  | 2026/05/02 00:57:38 [DRONE NORTE-drone-01] Lista de failover atualizada dinamicamente: [peer3:9090 peer2:9090 peer1:9090]
+drone-norte-1-1  | 2026/05/02 00:57:38 [DRONE NORTE-drone-01] Missão: replanejamento_risco_ambiental | prioridade: 3 | duração: 10s
+drone-norte-1-1  | 2026/05/02 00:57:48 [DRONE NORTE-drone-01] Missão concluída
+drone-norte-1-1  | 2026/05/02 00:57:56 [DRONE NORTE-drone-01] Missão: falha_sinalizacao | prioridade: 0 | duração: 2s
+drone-norte-1-1  | 2026/05/02 00:57:58 [DRONE NORTE-drone-01] Missão concluída
+drone-norte-1-1  | 2026/05/02 00:58:11 [DRONE NORTE-drone-01] Missão: congestionamento_corredor | prioridade: 1 | duração: 4s
+drone-norte-1-1  | 2026/05/02 00:58:15 [DRONE NORTE-drone-01] Missão concluída
+drone-norte-1-1  | 2026/05/02 00:58:21 [DRONE NORTE-drone-01] Missão: congestionamento_corredor | prioridade: 0 | duração: 2s
+drone-norte-1-1  | 2026/05/02 00:58:23 [DRONE NORTE-drone-01] Missão concluída
+drone-norte-1-1  | 2026/05/02 00:58:37 [DRONE NORTE-drone-01] Missão: inspecao_visual_urgente | prioridade: 2 | duração: 7s
+drone-norte-1-1  | 2026/05/02 00:58:44 [DRONE NORTE-drone-01] Missão concluída
+drone-norte-1-1  | 2026/05/02 00:58:51 [DRONE NORTE-drone-01] Missão: suspeita_bloqueio_rota | prioridade: 5 | duração: 15s
+drone-norte-1-1  | 2026/05/02 00:59:06 [DRONE NORTE-drone-01] Missão concluída
+drone-norte-1-1  | 2026/05/02 00:59:06 [DRONE NORTE-drone-01] Missão: objeto_nao_identificado | prioridade: 1 | duração: 4s
+drone-norte-1-1  | 2026/05/02 00:59:10 [DRONE NORTE-drone-01] Missão concluída
+drone-norte-1-1  | 2026/05/02 00:59:16 [DRONE NORTE-drone-01] Missão: objeto_nao_identificado | prioridade: 4 | duração: 13s
+drone-norte-1-1  | 2026/05/02 00:59:29 [DRONE NORTE-drone-01] Missão concluída
+drone-norte-1-1  | 2026/05/02 00:59:31 [DRONE NORTE-drone-01] Missão: inspecao_visual_urgente | prioridade: 1 | duração: 4s
+drone-norte-1-1  | 2026/05/02 00:59:35 [DRONE NORTE-drone-01] Missão concluída
+drone-norte-1-1  | 2026/05/02 00:59:43 [DRONE NORTE-drone-01] Missão: congestionamento_corredor | prioridade: 2 | duração: 7s
+drone-norte-1-1  | 2026/05/02 00:59:50 [DRONE NORTE-drone-01] Missão concluída
+drone-norte-1-1  | 2026/05/02 00:59:52 [DRONE NORTE-drone-01] Conexão perdida com peer1:9090...
+drone-norte-1-1  | 2026/05/02 00:59:55 [DRONE NORTE-drone-01] Conectado em peer2:9090
+drone-norte-1-1  | 2026/05/02 00:59:55 [DRONE NORTE-drone-01] Identificado com sucesso
+drone-norte-1-1  | 2026/05/02 00:59:55 [DRONE NORTE-drone-01] Lista de failover atualizada dinamicamente: [peer3:9090 peer2:9090]
+drone-norte-1-1  | 2026/05/02 00:59:59 [DRONE NORTE-drone-01] Missão: replanejamento_risco_ambiental | prioridade: 2 | duração: 7s
+drone-norte-1-1  | 2026/05/02 01:00:06 [DRONE NORTE-drone-01] Missão concluída
+drone-norte-1-1  | 2026/05/02 01:00:17 [DRONE NORTE-drone-01] Missão: congestionamento_corredor | prioridade: 0 | duração: 2s
+drone-norte-1-1  | 2026/05/02 01:00:19 [DRONE NORTE-drone-01] Missão concluída
+

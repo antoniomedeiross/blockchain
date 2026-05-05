@@ -72,10 +72,36 @@ func (r *Ricart) IniciarRequisicao(droneID string, req models.Requisicao) {
 	}
 	r.EnviarParaTodos(msg)
 
-	go r.watchdog(droneID, r.TimestampRequisicao, 30*time.Second)
+	go r.watchdog(droneID, r.TimestampRequisicao, 5*time.Second)
 }
 
-// ReceberRequest — chegou um REQUEST de outro peer
+// NotificarPeerOffline — chamado quando um peer desconecta.
+// Se estávamos esperando REPLY dele, conta como REPLY implícito imediatamente.
+func (r *Ricart) NotificarPeerOffline(peerID string) {
+	r.Mu.Lock()
+	defer r.Mu.Unlock()
+
+	if r.Estado != models.EstadoQuerendo {
+		return
+	}
+
+	if !r.EsperandoResposta[peerID] {
+		return // já havia respondido ou não estava na lista
+	}
+
+	delete(r.EsperandoResposta, peerID)
+	r.RespostasRecebidas++
+	log.Printf("[RICART] Peer %s offline — contando como REPLY implícito (%d/%d)\n",
+		peerID, r.RespostasRecebidas, r.TotalPeers())
+
+	if r.RespostasRecebidas >= r.TotalPeers() {
+		r.Estado = models.EstadoNaSecao
+		log.Printf("[RICART] Quorum atingido após peer offline! Alocando drone %s\n", r.DroneAlvo)
+		go r.AoAlocar(r.DroneAlvo)
+	}
+}
+
+
 func (r *Ricart) ReceberRequest(de string, droneID string, timestampDele int64) {
 	r.Mu.Lock()
 	defer r.Mu.Unlock()

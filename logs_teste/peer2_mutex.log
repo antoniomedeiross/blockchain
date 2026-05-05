@@ -1,0 +1,156 @@
+time="2026-05-01T21:57:51-03:00" level=warning msg="/home/antonio/uefs/V-semestre/redes/pbl-2/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+peer2  | 2026/05/02 00:57:32 [peer1:9090 peer3:9090]
+peer2  | 2026/05/02 00:57:32 TCP rodando na porta 9090
+peer2  | 2026/05/02 00:57:32 Tentando conectar ao peer: peer3:9090
+peer2  | 2026/05/02 00:57:32 Tentando conectar ao peer: peer1:9090
+peer2  | 2026/05/02 00:57:32 Peer peer1:9090 offline, tentando novamente em 3s...
+peer2  | 2026/05/02 00:57:32 Sucesso: Conectado ao peer peer3:9090
+peer2  | 2026/05/02 00:57:32 Identificado com sucesso para peer3:9090
+peer2  | 2026/05/02 00:57:32 [OUTGOING] Mensagem de peer3:9090: Tipo=SYNC_RESPONSE
+peer2  | 2026/05/02 00:57:32 Sincronizado com peer3:9090: 0 drones recebidos
+peer2  | 2026/05/02 00:57:32 Cliente TCP conectado: 172.23.0.4:43976
+peer2  | 2026/05/02 00:57:32 Peer NORTE conectado. IP Oficial de Escuta: peer1:9090
+peer2  | 2026/05/02 00:57:32 [NORTE] Mensagem recebida - Tipo: SYNC_REQUEST, De: NORTE, Para: 
+peer2  | 2026/05/02 00:57:32 [NORTE] SYNC_RESPONSE enviado com 0 drones
+peer2  | 2026/05/02 00:57:35 Cliente TCP conectado: 172.23.0.2:45300
+peer2  | 2026/05/02 00:57:35 Peer LESTE conectado. IP Oficial de Escuta: peer3:9090
+peer2  | 2026/05/02 00:57:35 [LESTE] Mensagem recebida - Tipo: SYNC_REQUEST, De: LESTE, Para: 
+peer2  | 2026/05/02 00:57:35 [LESTE] SYNC_RESPONSE enviado com 0 drones
+peer2  | 2026/05/02 00:57:35 Tentando conectar ao peer: peer1:9090
+peer2  | 2026/05/02 00:57:35 Sucesso: Conectado ao peer peer1:9090
+peer2  | 2026/05/02 00:57:35 Identificado com sucesso para peer1:9090
+peer2  | 2026/05/02 00:57:35 [OUTGOING] Mensagem de peer1:9090: Tipo=SYNC_RESPONSE
+peer2  | 2026/05/02 00:57:35 Sincronizado com peer1:9090: 0 drones recebidos
+peer2  | 2026/05/02 00:57:38 Cliente TCP conectado: 172.23.0.6:42338
+peer2  | 2026/05/02 00:57:38 Sensor conectado: sensores-sul-1
+peer2  | 2026/05/02 00:57:38 [] Mensagem recebida - Tipo: REQUISICAO_DRONE, De: sensores-sul-1, Para: 
+peer2  | 2026/05/02 00:57:38 [ZONA] Nova requisição do sensor sensores-sul-1 ENFILEIRADA — prioridade: 5
+peer2  | 2026/05/02 00:57:38 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 1
+peer2  | 2026/05/02 00:57:38 [OUTGOING] Mensagem de peer1:9090: Tipo=DRONE_UPDATE
+peer2  | 2026/05/02 00:57:38 Drone NORTE-drone-01 atualizado para: livre
+peer2  | 2026/05/02 00:57:38 [OUTGOING] Mensagem de peer1:9090: Tipo=REQUEST
+peer2  | 2026/05/02 00:57:38 [RICART] Enviando REPLY para NORTE (drone=NORTE-drone-01)
+peer2  | 2026/05/02 00:57:38 [OUTGOING] Mensagem de peer1:9090: Tipo=DRONE_UPDATE
+peer2  | 2026/05/02 00:57:38 Drone NORTE-drone-01 atualizado para: ocupado
+peer2  | 2026/05/02 00:57:38 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 1
+peer2  | 2026/05/02 00:57:48 [OUTGOING] Mensagem de peer1:9090: Tipo=DRONE_UPDATE
+peer2  | 2026/05/02 00:57:48 Drone NORTE-drone-01 atualizado para: livre
+peer2  | 2026/05/02 00:57:48 [OUTGOING] Mensagem de peer1:9090: Tipo=RELEASE
+peer2  | 2026/05/02 00:57:48 [RICART] RELEASE recebido de NORTE para drone NORTE-drone-01
+peer2  | 2026/05/02 00:57:48 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 1
+peer2  | 2026/05/02 00:57:48 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 1
+peer2  | 2026/05/02 00:57:48 [FILA] Disparando Ricart para prioridade 5 (objeto_nao_identificado)
+peer2  | 2026/05/02 00:57:48 [RICART] Iniciando requisição para drone NORTE-drone-01 (timestamp=3), esperando 2 peers
+peer2  | 2026/05/02 00:57:48 [DEBUG-FILA] Sucesso! Iniciando Ricart para o drone NORTE-drone-01
+peer2  | 2026/05/02 00:57:48 [OUTGOING] Mensagem de peer1:9090: Tipo=REPLY
+peer2  | 2026/05/02 00:57:48 [RICART] REPLY recebido de NORTE (1/2)
+peer2  | 2026/05/02 00:57:48 [OUTGOING] Mensagem de peer3:9090: Tipo=REPLY
+peer2  | 2026/05/02 00:57:48 [RICART] REPLY recebido de LESTE (2/2)
+peer2  | 2026/05/02 00:57:48 [RICART] Quorum atingido! Alocando drone NORTE-drone-01
+peer2  | 2026/05/02 00:57:48 [OUTGOING] Mensagem de peer3:9090: Tipo=REQUEST
+peer2  | 2026/05/02 00:57:48 [RICART] Adiando REPLY para LESTE (drone=NORTE-drone-01)
+peer2  | 2026/05/02 00:57:48 [MAIN] Drone NORTE-drone-01 alocado via ricart
+peer2  | 2026/05/02 00:57:48 [MAIN] Drone NORTE-drone-01 é remoto. Repassando comando para a zona SUL
+peer2  | 2026/05/02 00:57:48 Peer SUL não encontrado ou offline
+peer2  | 2026/05/02 00:57:48 [RICART] Reset completo. Pronto para nova requisição.
+peer2  | 2026/05/02 00:57:48 [OUTGOING] Mensagem de peer3:9090: Tipo=RELEASE
+peer2  | 2026/05/02 00:57:48 [RICART] RELEASE recebido de LESTE para drone NORTE-drone-01
+peer2  | 2026/05/02 00:57:48 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 0
+peer2  | 2026/05/02 00:57:52 [OUTGOING] Mensagem de peer3:9090: Tipo=GET_DRONES
+peer2  | 2026/05/02 00:57:52 
+peer2  | ========= DRONES LOCAIS [SUL] =========
+peer2  | 2026/05/02 00:57:52   ID: NORTE-drone-01 | Status: ocupado | Base: NORTE | Atual: SUL
+peer2  | 2026/05/02 00:57:52 ======================================
+peer2  | 2026/05/02 00:57:52 [OUTGOING] Mensagem de peer1:9090: Tipo=GET_DRONES
+peer2  | 2026/05/02 00:57:55 Cliente TCP conectado: 172.23.0.6:41364
+peer2  | 2026/05/02 00:57:55 Sensor conectado: sensores-sul-1
+peer2  | 2026/05/02 00:57:55 [] Mensagem recebida - Tipo: REQUISICAO_DRONE, De: sensores-sul-1, Para: 
+peer2  | 2026/05/02 00:57:55 [ZONA] Nova requisição do sensor sensores-sul-1 ENFILEIRADA — prioridade: 5
+peer2  | 2026/05/02 00:57:55 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 1
+peer2  | 2026/05/02 00:57:56 [OUTGOING] Mensagem de peer1:9090: Tipo=REQUEST
+peer2  | 2026/05/02 00:57:56 [RICART] Enviando REPLY para NORTE (drone=NORTE-drone-01)
+peer2  | 2026/05/02 00:57:56 [OUTGOING] Mensagem de peer1:9090: Tipo=DRONE_UPDATE
+peer2  | 2026/05/02 00:57:56 Drone NORTE-drone-01 atualizado para: ocupado
+peer2  | 2026/05/02 00:57:58 [OUTGOING] Mensagem de peer1:9090: Tipo=DRONE_UPDATE
+peer2  | 2026/05/02 00:57:58 Drone NORTE-drone-01 atualizado para: livre
+peer2  | 2026/05/02 00:57:58 [OUTGOING] Mensagem de peer1:9090: Tipo=RELEASE
+peer2  | 2026/05/02 00:57:58 [RICART] RELEASE recebido de NORTE para drone NORTE-drone-01
+peer2  | 2026/05/02 00:57:58 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 1
+peer2  | 2026/05/02 00:57:58 [FILA] Disparando Ricart para prioridade 5 (suspeita_bloqueio_rota)
+peer2  | 2026/05/02 00:57:58 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 1
+peer2  | 2026/05/02 00:57:58 [RICART] Iniciando requisição para drone NORTE-drone-01 (timestamp=9), esperando 2 peers
+peer2  | 2026/05/02 00:57:58 [DEBUG-FILA] Sucesso! Iniciando Ricart para o drone NORTE-drone-01
+peer2  | 2026/05/02 00:57:58 [OUTGOING] Mensagem de peer3:9090: Tipo=REQUEST
+peer2  | 2026/05/02 00:57:58 [RICART] Enviando REPLY para LESTE (drone=NORTE-drone-01)
+peer2  | 2026/05/02 00:57:58 [OUTGOING] Mensagem de peer1:9090: Tipo=REPLY
+peer2  | 2026/05/02 00:57:58 [RICART] REPLY recebido de NORTE (1/2)
+peer2  | 2026/05/02 00:57:58 [OUTGOING] Mensagem de peer3:9090: Tipo=DRONE_UPDATE
+peer2  | 2026/05/02 00:57:58 Drone NORTE-drone-01 atualizado para: ocupado
+peer2  | 2026/05/02 00:57:58 [OUTGOING] Mensagem de peer3:9090: Tipo=RELEASE
+peer2  | 2026/05/02 00:57:58 [RICART] RELEASE recebido de LESTE para drone NORTE-drone-01
+peer2  | 2026/05/02 00:57:58 [RICART] RELEASE de LESTE conta como REPLY implícito (2/2)
+peer2  | 2026/05/02 00:57:58 [RICART] Quorum atingido via RELEASE! Alocando drone NORTE-drone-01
+peer2  | 2026/05/02 00:57:58 [OUTGOING] Mensagem de peer3:9090: Tipo=REPLY
+peer2  | 2026/05/02 00:57:58 [RICART] Reset completo. Pronto para nova requisição.
+peer2  | 2026/05/02 00:57:58 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 0
+peer2  | 2026/05/02 00:58:08 Cliente TCP conectado: 172.23.0.6:38840
+peer2  | 2026/05/02 00:58:08 Sensor conectado: sensores-sul-1
+peer2  | 2026/05/02 00:58:08 [] Mensagem recebida - Tipo: REQUISICAO_DRONE, De: sensores-sul-1, Para: 
+peer2  | 2026/05/02 00:58:08 [ZONA] Nova requisição do sensor sensores-sul-1 ENFILEIRADA — prioridade: 3
+peer2  | 2026/05/02 00:58:08 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 1
+peer2  | 2026/05/02 00:58:11 [OUTGOING] Mensagem de peer1:9090: Tipo=REQUEST
+peer2  | 2026/05/02 00:58:11 [RICART] Enviando REPLY para NORTE (drone=NORTE-drone-01)
+peer2  | 2026/05/02 00:58:11 [OUTGOING] Mensagem de peer1:9090: Tipo=DRONE_UPDATE
+peer2  | 2026/05/02 00:58:11 Drone NORTE-drone-01 atualizado para: ocupado
+peer2  | 2026/05/02 00:58:12 [OUTGOING] Mensagem de peer3:9090: Tipo=GET_DRONES
+peer2  | 2026/05/02 00:58:12 [FILA] Envelhecimento aplicado — 1 requisições na fila
+peer2  | 2026/05/02 00:58:12 
+peer2  | ========= DRONES LOCAIS [SUL] =========
+peer2  | 2026/05/02 00:58:12   ID: NORTE-drone-01 | Status: ocupado | Base: NORTE | Atual: NORTE
+peer2  | 2026/05/02 00:58:12 ======================================
+peer2  | 2026/05/02 00:58:12 [OUTGOING] Mensagem de peer1:9090: Tipo=GET_DRONES
+peer2  | 2026/05/02 00:58:15 [OUTGOING] Mensagem de peer1:9090: Tipo=DRONE_UPDATE
+peer2  | 2026/05/02 00:58:15 Drone NORTE-drone-01 atualizado para: livre
+peer2  | 2026/05/02 00:58:15 [OUTGOING] Mensagem de peer1:9090: Tipo=RELEASE
+peer2  | 2026/05/02 00:58:15 [RICART] RELEASE recebido de NORTE para drone NORTE-drone-01
+peer2  | 2026/05/02 00:58:15 [OUTGOING] Mensagem de peer3:9090: Tipo=REQUEST
+peer2  | 2026/05/02 00:58:15 [RICART] Enviando REPLY para LESTE (drone=NORTE-drone-01)
+peer2  | 2026/05/02 00:58:15 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 1
+peer2  | 2026/05/02 00:58:15 [FILA] Disparando Ricart para prioridade 4 (congestionamento_corredor)
+peer2  | 2026/05/02 00:58:15 [RICART] Iniciando requisição para drone NORTE-drone-01 (timestamp=16), esperando 2 peers
+peer2  | 2026/05/02 00:58:15 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 1
+peer2  | 2026/05/02 00:58:15 [DEBUG-FILA] Sucesso! Iniciando Ricart para o drone NORTE-drone-01
+peer2  | 2026/05/02 00:58:15 [OUTGOING] Mensagem de peer1:9090: Tipo=REPLY
+peer2  | 2026/05/02 00:58:15 [RICART] REPLY recebido de NORTE (1/2)
+peer2  | 2026/05/02 00:58:15 [OUTGOING] Mensagem de peer3:9090: Tipo=DRONE_UPDATE
+peer2  | 2026/05/02 00:58:15 Drone NORTE-drone-01 atualizado para: ocupado
+peer2  | 2026/05/02 00:58:15 [OUTGOING] Mensagem de peer3:9090: Tipo=RELEASE
+peer2  | 2026/05/02 00:58:15 [RICART] RELEASE recebido de LESTE para drone NORTE-drone-01
+peer2  | 2026/05/02 00:58:15 [RICART] RELEASE de LESTE conta como REPLY implícito (2/2)
+peer2  | 2026/05/02 00:58:15 [RICART] Quorum atingido via RELEASE! Alocando drone NORTE-drone-01
+peer2  | 2026/05/02 00:58:15 [OUTGOING] Mensagem de peer3:9090: Tipo=REPLY
+peer2  | 2026/05/02 00:58:15 [RICART] Reset completo. Pronto para nova requisição.
+peer2  | 2026/05/02 00:58:15 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 0
+peer2  | 2026/05/02 00:58:21 [OUTGOING] Mensagem de peer1:9090: Tipo=REQUEST
+peer2  | 2026/05/02 00:58:21 [RICART] Enviando REPLY para NORTE (drone=NORTE-drone-01)
+peer2  | 2026/05/02 00:58:21 [OUTGOING] Mensagem de peer1:9090: Tipo=DRONE_UPDATE
+peer2  | 2026/05/02 00:58:21 Drone NORTE-drone-01 atualizado para: ocupado
+peer2  | 2026/05/02 00:58:23 [OUTGOING] Mensagem de peer1:9090: Tipo=DRONE_UPDATE
+peer2  | 2026/05/02 00:58:23 Drone NORTE-drone-01 atualizado para: livre
+peer2  | 2026/05/02 00:58:23 [OUTGOING] Mensagem de peer1:9090: Tipo=RELEASE
+peer2  | 2026/05/02 00:58:23 [RICART] RELEASE recebido de NORTE para drone NORTE-drone-01
+peer2  | 2026/05/02 00:58:23 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 0
+peer2  | 2026/05/02 00:58:23 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 0
+peer2  | 2026/05/02 00:58:23 [OUTGOING] Mensagem de peer3:9090: Tipo=REQUEST
+peer2  | 2026/05/02 00:58:23 [RICART] Enviando REPLY para LESTE (drone=NORTE-drone-01)
+peer2  | 2026/05/02 00:58:23 [OUTGOING] Mensagem de peer3:9090: Tipo=DRONE_UPDATE
+peer2  | 2026/05/02 00:58:23 Drone NORTE-drone-01 atualizado para: ocupado
+peer2  | 2026/05/02 00:58:23 [OUTGOING] Mensagem de peer3:9090: Tipo=RELEASE
+peer2  | 2026/05/02 00:58:23 [RICART] RELEASE recebido de LESTE para drone NORTE-drone-01
+peer2  | 2026/05/02 00:58:23 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 0
+peer2  | 2026/05/02 00:58:27 Cliente TCP conectado: 172.23.0.6:51498
+peer2  | 2026/05/02 00:58:27 Sensor conectado: sensores-sul-1
+peer2  | 2026/05/02 00:58:27 [] Mensagem recebida - Tipo: REQUISICAO_DRONE, De: sensores-sul-1, Para: 
+peer2  | 2026/05/02 00:58:27 [ZONA] Nova requisição do sensor sensores-sul-1 ENFILEIRADA — prioridade: 5
+peer2  | 2026/05/02 00:58:27 [DEBUG-FILA] Acionado! Estado Ricart: LIVRE | Tamanho da Fila: 1
+

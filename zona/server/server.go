@@ -82,6 +82,17 @@ func conectarAosPeers(peers []string) {
 					if err != nil {
 						log.Printf("Conexão com %s perdida\n", addr)
 						conn.Close()
+						// Notifica o Ricart: busca o ZonaID deste peer pelo endereço
+						repo.Mutex.RLock()
+						for zonaID, peer := range repo.Peers {
+							if peer.Address == addr {
+								repo.Mutex.RUnlock()
+								repo.RicartInstance.NotificarPeerOffline(zonaID)
+								goto reconectar
+							}
+						}
+						repo.Mutex.RUnlock()
+					reconectar:
 						break
 					}
 					msg = strings.TrimSpace(msg)
@@ -106,7 +117,7 @@ func conectarAosPeers(peers []string) {
 							continue
 						}
 						for _, d := range drones {
-							repo.AtualizarDrone(d)
+							repo.AtualizarDroneRemoto(d)
 						}
 						log.Printf("Sincronizado com %s: %d drones recebidos\n", addr, len(drones))
 
@@ -117,8 +128,16 @@ func conectarAosPeers(peers []string) {
 							log.Printf("Erro ao parsear DRONE_UPDATE: %v\n", err)
 							continue
 						}
-						repo.AtualizarDrone(drone)
+						repo.AtualizarDroneRemoto(drone)
 						log.Printf("Drone %s atualizado para: %s\n", drone.ID, drone.Status)
+						// Drone ficou livre (ex: reconectou em outra zona após failover).
+						// Tenta processar fila local que pode estar aguardando por ele.
+						if drone.Status == models.StatusLivre {
+							go func() {
+								time.Sleep(200 * time.Millisecond)
+								repo.TentarAlocarDaFila()
+							}()
+						}
 
 					case "DRONES_RESPONSE":
 						dadosJSON, _ := json.Marshal(mensagem.Dados)
@@ -279,7 +298,13 @@ func main() {
 		TotalPeers: func() int {
 			repo.Mutex.RLock()
 			defer repo.Mutex.RUnlock()
-			return len(repo.Peers)
+			count := 0
+			for _, peer := range repo.Peers {
+				if peer.Alive {
+					count++
+				}
+			}
+			return count
 		},
 
 		AoAlocar: func(droneID string) {
@@ -295,6 +320,7 @@ func main() {
 			}
 			drone.Status = models.StatusOcupado
 			drone.ZonaAtual = getZona()
+			drone.MissaoAtual = repo.RicartInstance.RequisicaoAtual // salva missão em andamento
 			repo.Drones[droneID] = drone
 			repo.DroneMutex.Unlock()
 
@@ -320,14 +346,42 @@ func main() {
 				log.Printf("[MAIN] Missão enviada DIRETAMENTE para o drone local %s\n", droneID)
 				// Drone local: Liberar é chamado quando MISSAO_CONCLUIDA chegar via processarDrone
 			} else {
-				// DRONE REMOTO: despacha e já libera a seção crítica.
-				// A zona hospedeira cuidará do MISSAO_CONCLUIDA e enviará RELEASE via seu próprio Liberar.
-				// Se não liberarmos aqui, ficamos NA_SECAO para sempre esperando um evento que nunca chega.
-				log.Printf("[MAIN] Drone %s é remoto. Repassando comando para a zona %s\n", droneID, drone.ZonaBase)
-				enviarParaZona(drone.ZonaBase, models.Mensagem{
+				// DRONE REMOTO: usa ZonaAtual (onde o drone está fisicamente conectado agora),
+				// não ZonaBase (zona de origem que pode estar offline após failover).
+				zonaDestino := drone.ZonaAtual
+				if zonaDestino == "" {
+					zonaDestino = drone.ZonaBase
+				}
+
+				// Se zonaDestino aponta para nós mesmos mas o drone não está em DroneConns,
+				// o estado distribuído está desatualizado (ex: sobrou de um failover anterior).
+				// Nesse caso, procuramos o drone nos peers vivos como fallback.
+				minhaZona := getZona()
+				if zonaDestino == minhaZona {
+					log.Printf("[MAIN] Drone %s: ZonaAtual aponta para cá (%s) mas não está conectado — estado desatualizado, buscando em peers vivos\n", droneID, minhaZona)
+					repo.Mutex.RLock()
+					zonaDestino = ""
+					for id, peer := range repo.Peers {
+						if peer.Alive {
+							zonaDestino = id
+							break
+						}
+					}
+					repo.Mutex.RUnlock()
+
+					if zonaDestino == "" {
+						log.Printf("[MAIN] Nenhum peer vivo encontrado para repassar drone %s — liberando Ricart\n", droneID)
+						repo.RicartInstance.Liberar(droneID)
+						return
+					}
+					log.Printf("[MAIN] Redirecionando drone %s para peer vivo: %s\n", droneID, zonaDestino)
+				}
+
+				log.Printf("[MAIN] Drone %s é remoto. Repassando comando para a zona %s\n", droneID, zonaDestino)
+				enviarParaZona(zonaDestino, models.Mensagem{
 					Tipo:  "DESPACHAR_DRONE",
 					De:    getZona(),
-					Para:  drone.ZonaBase,
+					Para:  zonaDestino,
 					Dados: missao,
 				})
 				repo.RicartInstance.Liberar(droneID)

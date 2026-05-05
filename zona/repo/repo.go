@@ -2,11 +2,13 @@ package repo
 
 import (
 	"container/heap"
+	"encoding/json"
 	"log"
 	"net"
 	"pbl-2/zona/models"
 	"pbl-2/zona/ricart"
 	"sync"
+	"time"
 )
 
 // --- Heap de prioridade para requisições ---
@@ -47,6 +49,34 @@ var Drones = make(map[string]models.Drone)
 func AtualizarDrone(d models.Drone) {
 	DroneMutex.Lock()
 	defer DroneMutex.Unlock()
+	Drones[d.ID] = d
+}
+
+// AtualizarDroneRemoto é chamado quando a atualização vem de outro peer via DRONE_UPDATE.
+// Se o drone está conectado fisicamente aqui (temos o socket), somos a fonte de verdade
+// sobre o status dele — ignoramos atualizações de status externas para não corromper o estado.
+// Apenas aceitamos a atualização completa se NÃO temos o drone conectado localmente.
+func AtualizarDroneRemoto(d models.Drone) {
+	DroneConnMutex.RLock()
+	_, droneConectadoAqui := DroneConns[d.ID]
+	DroneConnMutex.RUnlock()
+
+	DroneMutex.Lock()
+	defer DroneMutex.Unlock()
+
+	if droneConectadoAqui {
+		// Temos o socket físico deste drone — somos a fonte de verdade sobre o status.
+		// Aceitamos apenas a ZonaBase caso venha atualizada, mas NÃO o status.
+		existente, existe := Drones[d.ID]
+		if existe {
+			// Preserva nosso status local, atualiza só metadados não-críticos
+			existente.ZonaBase = d.ZonaBase
+			Drones[d.ID] = existente
+		}
+		return
+	}
+
+	// Drone remoto: aceita normalmente
 	Drones[d.ID] = d
 }
 
@@ -110,12 +140,58 @@ var FilaMutex sync.Mutex
 
 func init() {
 	heap.Init(RequisicoesPendentes)
+	go envelhecerFila()
+}
+
+// envelhecerFila incrementa a prioridade de todas as requisições pendentes
+// a cada 10 segundos, até o máximo de 5, para evitar starvation.
+func envelhecerFila() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		FilaMutex.Lock()
+		alterou := false
+		for i, req := range *RequisicoesPendentes {
+			if req.Prioridade < 5 {
+				(*RequisicoesPendentes)[i].Prioridade++
+				alterou = true
+			}
+		}
+		if alterou {
+			heap.Init(RequisicoesPendentes) // reordena o heap após mudanças
+			log.Printf("[FILA] Envelhecimento aplicado — %d requisições na fila\n", RequisicoesPendentes.Len())
+		}
+		FilaMutex.Unlock()
+	}
 }
 
 func Enfileirar(req models.Requisicao) {
 	FilaMutex.Lock()
 	heap.Push(RequisicoesPendentes, req)
 	FilaMutex.Unlock()
+}
+
+// NotificarMissaoConcluida envia MISSAO_CONCLUIDA_ACK para a zona base de um drone
+// de failover, para que ela libere o Ricart corretamente.
+func NotificarMissaoConcluida(zonaBase string, droneID string) {
+	Mutex.RLock()
+	peer, exists := Peers[zonaBase]
+	Mutex.RUnlock()
+
+	if !exists || !peer.Alive || peer.Conn == nil {
+		// Zona base está offline — libera localmente para não travar
+		log.Printf("[FAILOVER] Zona base '%s' offline, liberando Ricart localmente para drone %s\n", zonaBase, droneID)
+		RicartInstance.Liberar(droneID)
+		return
+	}
+
+	ack := models.AckMissao{DroneID: droneID}
+	msg := models.Mensagem{
+		Tipo:  "MISSAO_CONCLUIDA_ACK",
+		Dados: ack,
+	}
+	data, _ := json.Marshal(msg)
+	peer.Conn.Write(append(data, '\n'))
 }
 
 func ProximaRequisicao() (models.Requisicao, bool) {

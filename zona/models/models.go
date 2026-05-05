@@ -36,10 +36,11 @@ const (
 )
 
 type Drone struct {
-    ID        string      `json:"id"`
-    Status    DroneStatus `json:"status"`
-    ZonaBase  string      `json:"zona_base"`
-    ZonaAtual string      `json:"zona_atual"` // pode estar atendendo outra zona
+    ID          string      `json:"id"`
+    Status      DroneStatus `json:"status"`
+    ZonaBase    string      `json:"zona_base"`
+    ZonaAtual   string      `json:"zona_atual"`    // pode estar atendendo outra zona
+    MissaoAtual *Requisicao `json:"missao_atual,omitempty"` // missão em execução (nil se livre)
 }
 
 //STRUCT do server
@@ -112,4 +113,10 @@ type MensagemDrone struct {
 	DroneID   string      `json:"drone_id"`
 	Dados     interface{} `json:"dados,omitempty"`
 	Timestamp time.Time   `json:"timestamp"`
+}
+
+// AckMissao é enviado pela zona de failover para a zona base quando
+// um drone de failover conclui uma missão.
+type AckMissao struct {
+	DroneID string `json:"drone_id"`
 }
