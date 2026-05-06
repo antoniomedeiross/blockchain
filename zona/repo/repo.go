@@ -55,31 +55,54 @@ func AtualizarDrone(d models.Drone) {
 // AtualizarDroneRemoto é chamado quando a atualização vem de outro peer via DRONE_UPDATE.
 //
 // Regra de autoridade:
-//   - Se o Ricart LOCAL está QUERENDO ou NA_SEÇÃO para este drone, somos nós que estamos
-//     alocando agora — ignoramos updates externos que colidiriam com nossa alocação.
-//   - Em todos os outros casos aceitamos o update normalmente, inclusive quando o drone
-//     está fisicamente conectado aqui mas foi alocado por outro peer via Ricart.
+//   - Se o Ricart LOCAL está NA_SEÇÃO para este drone, somos nós que estamos usando —
+//     ignoramos qualquer update externo para não corromper nosso estado.
+//   - Se o Ricart LOCAL está QUERENDO e chega um update de "ocupado" para o mesmo drone,
+//     significa que PERDEMOS a corrida — aceitamos o update e abortamos nossa requisição.
+//   - Em todos os outros casos aceitamos o update normalmente.
 func AtualizarDroneRemoto(d models.Drone) {
-	// Verifica se o Ricart local está ativo para este drone
-	ricartAtivo := false
 	if RicartInstance != nil {
 		RicartInstance.Mu.Lock()
-		ricartAtivo = (RicartInstance.Estado == models.EstadoQuerendo || RicartInstance.Estado == models.EstadoNaSecao) &&
-			RicartInstance.DroneAlvo == d.ID
+		estado := RicartInstance.Estado
+		droneAlvo := RicartInstance.DroneAlvo
 		RicartInstance.Mu.Unlock()
-	}
 
-	DroneMutex.Lock()
-	defer DroneMutex.Unlock()
+		// Estamos NA_SECAO usando este drone — ignoramos update externo
+		if estado == models.EstadoNaSecao && droneAlvo == d.ID {
+			return
+		}
 
-	if ricartAtivo {
-		// Estamos no meio de uma alocação local para este drone —
-		// ignoramos o update externo para não corromper nosso estado.
-		return
+		// Estamos QUERENDO este drone e outro peer já o marcou como ocupado —
+		// perdemos a corrida: aceita o update e aborta o Ricart localmente
+		if estado == models.EstadoQuerendo && droneAlvo == d.ID && d.Status == models.StatusOcupado {
+			log.Printf("[RICART] ⚠ DRONE_UPDATE: %s já está ocupado por outro peer — abortando requisição local\n", d.ID)
+			// CRÍTICO: seta Abortando=true DENTRO do lock do Ricart antes de soltar,
+			// para que ReceberRelease/watchdog que adquirirem o lock logo depois
+			// já vejam o flag e não acionem AoAlocar.
+			RicartInstance.Mu.Lock()
+			if RicartInstance.Estado == models.EstadoQuerendo && RicartInstance.DroneAlvo == d.ID {
+				RicartInstance.Abortando = true
+			}
+			RicartInstance.Mu.Unlock()
+			DroneMutex.Lock()
+			Drones[d.ID] = d
+			DroneMutex.Unlock()
+			go RicartInstance.AbortarRequisicao(d.ID)
+			return
+		}
 	}
 
 	// Aceita a atualização normalmente
+	DroneMutex.Lock()
 	Drones[d.ID] = d
+	DroneMutex.Unlock()
+
+	// Se o drone ficou livre, pode haver requisições na fila esperando por ele
+	if d.Status == models.StatusLivre {
+		go func() {
+			TentarAlocarDaFila()
+		}()
+	}
 }
 
 func BuscarDrones() map[string]models.Drone {

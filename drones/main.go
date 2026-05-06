@@ -36,12 +36,18 @@ func getEnv(key, fallback string) string {
 
 func tempoMissao(prioridade int) time.Duration {
 	tempos := map[int]time.Duration{
-		0: 2 * time.Second,
-		1: 4 * time.Second,
-		2: 7 * time.Second,
-		3: 10 * time.Second,
-		4: 13 * time.Second,
-		5: 15 * time.Second,
+		// 0: 2 * time.Second,
+		// 1: 4 * time.Second,
+		// 2: 7 * time.Second,
+		// 3: 10 * time.Second,
+		// 4: 13 * time.Second,
+		// 5: 15 * time.Second,
+        0: 5 * time.Second,
+		1: 5 * time.Second,
+		2: 5 * time.Second,
+		3: 5 * time.Second,
+		4: 5 * time.Second,
+		5: 5 * time.Second,
 	}
 	if t, ok := tempos[prioridade]; ok {
 		return t

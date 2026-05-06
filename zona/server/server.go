@@ -162,7 +162,7 @@ func conectarAosPeers(peers []string) {
 						}
 						switch mensagem.Tipo {
 						case "REQUEST":
-							repo.RicartInstance.ReceberRequest(ricartMsg.De, ricartMsg.DroneID, ricartMsg.Timestamp)
+							repo.RicartInstance.ReceberRequest(ricartMsg.De, ricartMsg.DroneID, ricartMsg.Timestamp, ricartMsg.Prioridade)
 						case "REPLY":
 							repo.RicartInstance.ReceberReply(ricartMsg.De, ricartMsg.DroneID)
 						case "RELEASE":
@@ -416,6 +416,15 @@ func main() {
 			drone, existe := repo.Drones[droneID]
 			if !existe || drone.Status != models.StatusLivre {
 				repo.DroneMutex.Unlock()
+				// Drone já foi alocado por outro peer — recoloca a req na fila
+				// antes de liberar, senão ela é perdida quando Liberar() limpa RequisicaoAtual
+				repo.RicartInstance.Mu.Lock()
+				reqPerdida := repo.RicartInstance.RequisicaoAtual
+				repo.RicartInstance.Mu.Unlock()
+				if reqPerdida != nil {
+					log.Printf("[ALOCAÇÃO] ↩ Drone %s já ocupado — recolocando req '%s' na fila\n", droneID, reqPerdida.Ocorrencia)
+					repo.Enfileirar(*reqPerdida)
+				}
 				repo.RicartInstance.Liberar(droneID)
 				go repo.TentarAlocarDaFila()
 				return
@@ -525,6 +534,9 @@ func main() {
 		TentarAlocar: func() {
 			time.Sleep(200 * time.Millisecond) // pequeno delay para o DRONE_UPDATE chegar antes
 			repo.TentarAlocarDaFila()
+		},
+		ReenfileirarReq: func(req models.Requisicao) {
+			repo.Enfileirar(req)
 		},
 	}
 

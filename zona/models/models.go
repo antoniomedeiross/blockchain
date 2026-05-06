@@ -93,10 +93,11 @@ const (
 )
 
 type MensagemRicart struct {
-    Tipo      string `json:"tipo"`       // "REQUEST", "REPLY", "RELEASE"
-    De        string `json:"de"`
-    DroneID   string `json:"drone_id"`  // qual drone está sendo disputado
-    Timestamp int64  `json:"timestamp"` // relógio de Lamport
+    Tipo       string `json:"tipo"`        // "REQUEST", "REPLY", "RELEASE"
+    De         string `json:"de"`
+    DroneID    string `json:"drone_id"`   // qual drone está sendo disputado
+    Timestamp  int64  `json:"timestamp"`  // relógio de Lamport
+    Prioridade int    `json:"prioridade"` // prioridade da requisição (maior = mais urgente)
 }
 
 
