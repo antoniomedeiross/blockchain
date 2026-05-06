@@ -285,11 +285,12 @@ func BroadcastDroneUpdate(drone models.Drone) {
 
 // StatusHTTP é o payload JSON retornado pelo endpoint /status
 type StatusHTTP struct {
-	Zona       string              `json:"zona"`
-	Ricart     string              `json:"ricart"`
-	Drones     []DroneHTTP         `json:"drones"`
-	Fila       []RequisicaoHTTP    `json:"fila"`
-	Peers      []PeerHTTP          `json:"peers"`
+	Zona              string              `json:"zona"`
+	Ricart            string              `json:"ricart"`
+	Drones            []DroneHTTP         `json:"drones"`
+	Fila              []RequisicaoHTTP    `json:"fila"`
+	Peers             []PeerHTTP          `json:"peers"`
+	DronesGerenciados []string            `json:"drones_gerenciados"`
 }
 
 type DroneHTTP struct {
@@ -366,11 +367,12 @@ func iniciarHTTP() {
 		}
 
 		status := StatusHTTP{
-			Zona:   getZona(),
-			Ricart: ricartEstado,
-			Drones: drones,
-			Fila:   fila,
-			Peers:  peers,
+			Zona:              getZona(),
+			Ricart:            ricartEstado,
+			Drones:            drones,
+			Fila:              fila,
+			Peers:             peers,
+			DronesGerenciados: repo.ListarGerenciados(),
 		}
 
 		json.NewEncoder(w).Encode(status)
@@ -444,6 +446,7 @@ func main() {
 				repo.DroneMutex.Unlock()
 
 				BroadcastDroneUpdate(drone)
+				repo.RegistrarGerenciamento(droneID)
 				log.Printf("\n[ALOCAÇÃO] ══► Drone %s alocado localmente em %s\n", droneID, getZona())
 				log.Printf("[MISSÃO] ► Missão enviada diretamente para %s\n", droneID)
 				// Liberar é chamado quando MISSAO_CONCLUIDA chegar via processarDrone
@@ -487,6 +490,7 @@ func main() {
 				repo.DroneMutex.Unlock()
 
 				BroadcastDroneUpdate(drone)
+				repo.RegistrarGerenciamento(droneID)
 				log.Printf("\n[ALOCAÇÃO] ══► Drone %s alocado remotamente → enviando para %s\n", droneID, zonaDestino)
 				enviarParaZona(zonaDestino, models.Mensagem{
 					Tipo:  "DESPACHAR_DRONE",
@@ -494,6 +498,8 @@ func main() {
 					Para:  zonaDestino,
 					Dados: missao,
 				})
+				// Para drones remotos, o Ricart é liberado imediatamente após despachar.
+				// O gerenciamento é removido quando o RELEASE confirmar a conclusão.
 				repo.RicartInstance.Liberar(droneID)
 			}
 		},

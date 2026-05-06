@@ -344,26 +344,49 @@ function renderZona(data, isOffline) {
   const drones = data?.drones || []
   const fila = data?.fila || []
 
-  // Conta drones por status
-  const livres  = drones.filter(d => d.status === 'livre' && d.zona_atual === zona).length
-  const ocupados = drones.filter(d => d.status === 'ocupado').length
-  const visitantes = drones.filter(d => d.zona_atual === zona && d.zona_base !== zona).length
+  // Conjunto de IDs gerenciados ativamente por esta zona (alocados via Ricart)
+  const gerenciados = new Set(data.drones_gerenciados || [])
 
   // Maior prioridade na fila
   const maxPrio = fila.length > 0 ? Math.max(...fila.map(r => r.prioridade)) : null
 
-  // Drones para exibir: apenas os que estão nesta zona (fisicamente) OU que pertencem a ela
-  const dronesExibir = drones.filter(d => d.zona_atual === zona || d.zona_base === zona)
+  // Drones a exibir: da base desta zona + físicos aqui (failover) + alocados por esta zona
+  const dronesExibir = drones.filter(d =>
+    d.zona_base === zona ||    // drone da base
+    d.zona_atual === zona ||   // drone físico aqui (failover)
+    gerenciados.has(d.id)      // drone alocado por esta zona (pode estar em outro lugar)
+  )
+
+  // Contadores
+  const livres     = dronesExibir.filter(d => d.status === 'livre').length
+  const ocupados   = dronesExibir.filter(d => d.status === 'ocupado').length
+  const visitantes = dronesExibir.filter(d => d.zona_atual === zona && d.zona_base !== zona).length
 
   const dronesHTML = dronesExibir.length === 0
     ? `<div class="sem-drones">Nenhum drone</div>`
     : dronesExibir.map(d => {
+        // Drone de outra base conectado fisicamente aqui (failover)
         const visitante = d.zona_base !== zona && d.zona_atual === zona
-        const cssClass = visitante ? 'visitante' : d.status
-        const badge = visitante ? `VISITANTE (${d.zona_base})` : d.status.toUpperCase()
-        const meta = visitante
-          ? `Base: ${d.zona_base} → Aqui agora`
-          : (d.zona_atual !== zona ? `Em missão em: ${d.zona_atual}` : `Base: ${d.zona_base}`)
+        // Drone alocado por esta zona mas fisicamente em outro lugar
+        const alocadoRemoto = gerenciados.has(d.id) && d.zona_base !== zona && d.zona_atual !== zona
+
+        let cssClass, badge, meta
+        if (visitante) {
+          cssClass = 'visitante'
+          badge = `FAILOVER (${d.zona_base})`
+          meta = `Base: ${d.zona_base} → Conectado aqui`
+        } else if (alocadoRemoto) {
+          cssClass = d.status
+          badge = `ALOCADO`
+          meta = `Base: ${d.zona_base} — em ${d.zona_atual}`
+        } else {
+          cssClass = d.status
+          badge = d.status.toUpperCase()
+          meta = d.zona_atual !== zona
+            ? `Despachado para: ${d.zona_atual}`
+            : `Base: ${d.zona_base}`
+        }
+
         const missaoHTML = d.missao
           ? `<div class="drone-missao">⬡ ${nomeOcorrencia(d.missao)} [P${d.prioridade}]</div>`
           : ''
@@ -412,7 +435,7 @@ function renderZona(data, isOffline) {
 
       <div class="zona-stats">
         <div class="stat">
-          <div class="stat-val">${dronesExibir.filter(d => (d.zona_atual===zona||d.zona_base===zona) && d.status==='livre').length}</div>
+          <div class="stat-val">${livres}</div>
           <div class="stat-label">Livres</div>
         </div>
         <div class="stat">

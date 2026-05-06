@@ -72,7 +72,7 @@ func (r *Ricart) IniciarRequisicao(droneID string, req models.Requisicao) {
 	}
 	r.EnviarParaTodos(msg)
 
-	go r.watchdog(droneID, r.TimestampRequisicao, 5*time.Second)
+	go r.watchdog(droneID, r.TimestampRequisicao, 15*time.Second)
 }
 
 // NotificarPeerOffline — chamado quando um peer desconecta.

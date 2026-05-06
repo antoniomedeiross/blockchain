@@ -110,6 +110,33 @@ func SelecionarDroneLivre() (models.Drone, bool) {
 var DroneConns = make(map[string]net.Conn) // droneID
 var DroneConnMutex sync.RWMutex
 
+// DronesGerenciados rastreia quais drones foram alocados via Ricart por esta zona.
+// Um drone entra aqui quando AoAlocar é chamado e sai quando Liberar é chamado.
+var DronesGerenciados = make(map[string]bool)
+var DronesGeridosMutex sync.RWMutex
+
+func RegistrarGerenciamento(droneID string) {
+	DronesGeridosMutex.Lock()
+	DronesGerenciados[droneID] = true
+	DronesGeridosMutex.Unlock()
+}
+
+func RemoverGerenciamento(droneID string) {
+	DronesGeridosMutex.Lock()
+	delete(DronesGerenciados, droneID)
+	DronesGeridosMutex.Unlock()
+}
+
+func ListarGerenciados() []string {
+	DronesGeridosMutex.RLock()
+	defer DronesGeridosMutex.RUnlock()
+	lista := make([]string, 0, len(DronesGerenciados))
+	for id := range DronesGerenciados {
+		lista = append(lista, id)
+	}
+	return lista
+}
+
 // repo/drones.go
 var BroadcastFn func(drone models.Drone)
 

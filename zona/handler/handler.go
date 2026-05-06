@@ -375,6 +375,7 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 		switch mensagem.Tipo {
 		case "MISSAO_CONCLUIDA":
 			log.Printf("[DRONE] ✔ Drone %s concluiu missão — liberando\n", droneID)
+			repo.RemoverGerenciamento(droneID)
 
 			repo.DroneMutex.Lock()
 			d := repo.Drones[droneID]
