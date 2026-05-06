@@ -25,7 +25,7 @@ func ProcessarConexoes(conn net.Conn) {
 		msg, err := leitor.ReadString('\n')
 		if err != nil {
 			if peerZona != "" {
-				log.Printf("Peer %s desconectado\n", peerZona)
+				log.Printf("[P2P] ✗ Peer %s desconectado\n", peerZona)
 				repo.Mutex.Lock()
 				if peer, exists := repo.Peers[peerZona]; exists {
 					peer.Alive = false
@@ -54,7 +54,7 @@ func ProcessarConexoes(conn net.Conn) {
 			if partes[0] == "SENSOR" {
 				// É um sensor — só confirma e processa requisições
 				sensorID := partes[1]
-				log.Printf("Sensor conectado: %s\n", sensorID)
+				log.Printf("[SENSOR] ✔ Sensor conectado: %s\n", sensorID)
 				conn.Write([]byte("OK\n"))
 				// peerZona fica vazio — sensor não é peer
 				continue
@@ -63,7 +63,7 @@ func ProcessarConexoes(conn net.Conn) {
 			// SE FOR UM DRONE
 			if partes[0] == "DRONE" {
 				droneID := partes[1]
-				log.Printf("Drone conectado: %s\n", droneID)
+				log.Printf("[DRONE] ✔ Drone conectado: %s\n", droneID)
 
 				repo.RegistrarConexaoDrone(droneID, conn)
 
@@ -76,7 +76,7 @@ func ProcessarConexoes(conn net.Conn) {
 					droneExistente.ZonaAtual = getZonaAtual() // zona deste peer, não a base original
 					droneExistente.MissaoAtual = nil
 					repo.Drones[droneID] = droneExistente
-					log.Printf("Drone %s reconectado via failover (base: %s, agora em: %s)\n",
+					log.Printf("\n[FAILOVER] ══► Drone %s reconectou via failover (base: %s → agora em: %s)\n",
 						droneID, droneExistente.ZonaBase, getZonaAtual())
 				} else {
 					// Drone novo: registra pela primeira vez
@@ -107,7 +107,7 @@ func ProcessarConexoes(conn net.Conn) {
 				peerZona = partes[1]
 				listenAddr := partes[2] // Aqui está o IP real de escuta! (Ex: peer1:9090)
 
-				log.Printf("Peer %s conectado. IP Oficial de Escuta: %s\n", peerZona, listenAddr)
+				log.Printf("[P2P] ✔ Peer %s conectado (escutando em %s)\n", peerZona, listenAddr)
 
 				repo.Mutex.Lock()
 				repo.Peers[peerZona] = models.Peer{
@@ -140,7 +140,7 @@ func ProcessarConexoes(conn net.Conn) {
 		}
 		repo.Mutex.Unlock()
 
-		log.Printf("[%s] Mensagem recebida - Tipo: %s, De: %s, Para: %s\n", peerZona, mensagem.Tipo, mensagem.De, mensagem.Para)
+		log.Printf("[%s] ← %s de: %s\n", peerZona, mensagem.Tipo, mensagem.De)
 
 		// Processar tipos de mensagem
 		switch mensagem.Tipo {
@@ -158,7 +158,7 @@ func ProcessarConexoes(conn net.Conn) {
 
 		case "DATA":
 			// Processar dados recebidos
-			log.Printf("[%s] Dados: %v\n", peerZona, mensagem.Dados)
+			// log suprimido: dados brutos raramente necessários
 			// Aqui você pode processar os dados como desejar
 
 		case "STATUS":
@@ -181,7 +181,7 @@ func ProcessarConexoes(conn net.Conn) {
 				log.Printf("Erro ao parsear REQUISICAO_DRONE: %v\n", err)
 				continue
 			}
-			log.Printf("[ZONA] Nova requisição do sensor %s ENFILEIRADA — prioridade: %d\n", req.Sensor, req.Prioridade)
+			log.Printf("[FILA] ↓ Nova req de %s enfileirada — prioridade=%d (%s)\n", req.Sensor, req.Prioridade, req.Ocorrencia)
 
 			// Coloca na fila de prioridade
 			repo.Enfileirar(req)
@@ -197,12 +197,12 @@ func ProcessarConexoes(conn net.Conn) {
 				continue
 			}
 
-			log.Printf("[%s] Recebi ordem externa para despachar MEU drone físico %s\n", peerZona, missao.DroneID)
+			log.Printf("[MISSÃO] ◄ [%s] DESPACHAR drone físico %s\n", peerZona, missao.DroneID)
 
 			// Agora sim, o conn.Write vai funcionar, porque o drone tá conectado aqui!
 			data, _ := json.Marshal(missao)
 			if !repo.EnviarParaDrone(missao.DroneID, data) {
-				log.Printf("ERRO CRÍTICO: Não consegui repassar missão ao drone local %s\n", missao.DroneID)
+				log.Printf("[MISSÃO] ✗ ERRO: Drone %s não está conectado localmente\n", missao.DroneID)
 			}
 
 		case "SYNC_REQUEST":
@@ -218,7 +218,7 @@ func ProcessarConexoes(conn net.Conn) {
 			if data, err := json.Marshal(resposta); err == nil {
 				conn.Write(append(data, '\n'))
 			}
-			log.Printf("[%s] SYNC_RESPONSE enviado com %d drones\n", peerZona, len(drones))
+			log.Printf("[SYNC] → Enviando estado para %s: %d drone(s)\n", peerZona, len(drones))
 
 		case "SYNC_RESPONSE":
 			// Recebi o estado completo de outro peer, atualizo minha lista
@@ -231,7 +231,7 @@ func ProcessarConexoes(conn net.Conn) {
 			for _, d := range drones {
 				repo.AtualizarDroneRemoto(d)
 			}
-			log.Printf("[%s] Estado sincronizado: %d drones recebidos\n", peerZona, len(drones))
+			log.Printf("[SYNC] ✔ Estado recebido de %s: %d drone(s)\n", peerZona, len(drones))
 
 		case "DRONE_UPDATE":
 			// Um peer atualizou o estado de um drone
@@ -242,7 +242,7 @@ func ProcessarConexoes(conn net.Conn) {
 				continue
 			}
 			repo.AtualizarDroneRemoto(drone)
-			log.Printf("[%s] Drone %s atualizado para status: %s\n", peerZona, drone.ID, drone.Status)
+			log.Printf("[ESTADO] Drone %s → %s (notificado por %s)\n", drone.ID, drone.Status, peerZona)
 
 		case "GET_DRONES":
 			drones := repo.BuscarDrones()
@@ -256,7 +256,7 @@ func ProcessarConexoes(conn net.Conn) {
 			if data, err := json.Marshal(resposta); err == nil {
 				conn.Write(append(data, '\n'))
 			}
-			log.Printf("[%s] DRONES_RESPONSE enviado com %d drones\n", peerZona, len(drones))
+			log.Printf("[SYNC] → GET_DRONES respondido para %s: %d drone(s)\n", peerZona, len(drones))
 
 		case "DRONES_RESPONSE":
 			dadosJSON, _ := json.Marshal(mensagem.Dados)
@@ -265,12 +265,12 @@ func ProcessarConexoes(conn net.Conn) {
 				log.Printf("Erro ao parsear DRONES_RESPONSE: %v\n", err)
 				continue
 			}
-			log.Printf("\n========= DRONES DE %s =========\n", mensagem.De)
+			log.Printf("\n┌─── DRONES DE %s ───\n", mensagem.De)
 			for _, d := range drones {
 				log.Printf("  ID: %s | Status: %s | Base: %s | Atual: %s\n",
 					d.ID, d.Status, d.ZonaBase, d.ZonaAtual)
 			}
-			log.Printf("=================================\n")
+			log.Printf("└────────────────────────────\n")
 
 		case "REQUEST", "REPLY", "RELEASE":
 			dadosJSON, _ := json.Marshal(mensagem.Dados)
@@ -297,7 +297,7 @@ func ProcessarConexoes(conn net.Conn) {
 				log.Printf("Erro ao parsear MISSAO_CONCLUIDA_ACK: %v\n", err)
 				continue
 			}
-			log.Printf("[%s] Drone %s concluiu missão em zona de failover — liberando Ricart\n", peerZona, ack.DroneID)
+			log.Printf("[FAILOVER] ✔ Drone %s concluiu missão em %s — Ricart liberado\n", ack.DroneID, peerZona)
 			repo.RicartInstance.Liberar(ack.DroneID)
 			go func() {
 				time.Sleep(300 * time.Millisecond)
@@ -305,7 +305,7 @@ func ProcessarConexoes(conn net.Conn) {
 			}()
 
 		default:
-			log.Printf("Tipo de mensagem desconhecido: %s\n", mensagem.Tipo)
+			log.Printf("[HANDLER] ⚠ Tipo de mensagem desconhecido: %s\n", mensagem.Tipo)
 		}
 	}
 }
@@ -321,7 +321,7 @@ func getZonaAtual() string {
 // FUNCOES
 func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 	defer func() {
-		log.Printf("Drone %s desconectado\n", droneID)
+		log.Printf("[DRONE] ✗ Drone %s desconectado\n", droneID)
 		repo.RemoverConexaoDrone(droneID)
 
 		repo.DroneMutex.Lock()
@@ -335,7 +335,7 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 
 			// Se havia missão em andamento, recoloca na fila com prioridade original
 			if missaoInterrompida != nil {
-				log.Printf("[DRONE %s] Caiu durante missão '%s' (prioridade %d) — recolocando na fila\n",
+				log.Printf("\n[DRONE] ⚠ Drone %s CAIU durante missão '%s' (prioridade %d) — recolocando na fila\n",
 					droneID, missaoInterrompida.Ocorrencia, missaoInterrompida.Prioridade)
 				repo.Enfileirar(*missaoInterrompida)
 			}
@@ -374,7 +374,7 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 
 		switch mensagem.Tipo {
 		case "MISSAO_CONCLUIDA":
-			log.Printf("[DRONE %s] Missão concluída — liberando\n", droneID)
+			log.Printf("[DRONE] ✔ Drone %s concluiu missão — liberando\n", droneID)
 
 			repo.DroneMutex.Lock()
 			d := repo.Drones[droneID]
@@ -404,7 +404,7 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 			} else {
 				// Drone de failover: a zona base foi quem iniciou o Ricart,
 				// então ela que deve chamar Liberar(). Enviamos MISSAO_CONCLUIDA_ACK para ela.
-				log.Printf("[DRONE %s] Failover: notificando zona base '%s' para liberar Ricart\n", droneID, zonaBase)
+				log.Printf("[FAILOVER] → Notificando zona base %s para liberar Ricart do drone %s\n", zonaBase, droneID)
 				repo.NotificarMissaoConcluida(zonaBase, droneID)
 			}
 

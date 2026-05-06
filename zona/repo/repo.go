@@ -159,7 +159,7 @@ func envelhecerFila() {
 		}
 		if alterou {
 			heap.Init(RequisicoesPendentes) // reordena o heap após mudanças
-			log.Printf("[FILA] Envelhecimento aplicado — %d requisições na fila\n", RequisicoesPendentes.Len())
+			log.Printf("[FILA] ⏫ Envelhecimento: %d req(s) subiram de prioridade\n", RequisicoesPendentes.Len())
 		}
 		FilaMutex.Unlock()
 	}
@@ -180,7 +180,7 @@ func NotificarMissaoConcluida(zonaBase string, droneID string) {
 
 	if !exists || !peer.Alive || peer.Conn == nil {
 		// Zona base está offline — libera localmente para não travar
-		log.Printf("[FAILOVER] Zona base '%s' offline, liberando Ricart localmente para drone %s\n", zonaBase, droneID)
+		log.Printf("[FAILOVER] ⚠ Zona base %s offline — Ricart liberado localmente para drone %s\n", zonaBase, droneID)
 		RicartInstance.Liberar(droneID)
 		return
 	}
@@ -210,7 +210,9 @@ func TentarAlocarDaFila() {
 	estado := RicartInstance.Estado
 	RicartInstance.Mu.Unlock()
 
-	log.Printf("[DEBUG-FILA] Acionado! Estado Ricart: %s | Tamanho da Fila: %d\n", estado, RequisicoesPendentes.Len())
+	if RequisicoesPendentes.Len() > 0 {
+		log.Printf("[FILA] Estado=%s | Pendentes=%d\n", estado, RequisicoesPendentes.Len())
+	}
 
 	if estado != models.EstadoLivre {
 		return
@@ -229,9 +231,9 @@ func TentarAlocarDaFila() {
 	}
 
 	// 4. Inicia o pedido!
-	log.Printf("[FILA] Disparando Ricart para prioridade %d (%s)", req.Prioridade, req.Ocorrencia)
+	log.Printf("[FILA] ► Disparando Ricart — prioridade=%d (%s)\n", req.Prioridade, req.Ocorrencia)
 	RicartInstance.IniciarRequisicao(drone.ID, req)
-	log.Printf("[DEBUG-FILA] Sucesso! Iniciando Ricart para o drone %s\n", drone.ID)
+	log.Printf("[FILA] ✔ Drone selecionado: %s\n", drone.ID)
 }
 
 //

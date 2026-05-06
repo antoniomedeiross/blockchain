@@ -39,7 +39,7 @@ func (r *Ricart) IniciarRequisicao(droneID string, req models.Requisicao) {
 	defer r.Mu.Unlock()
 
 	if r.Estado == models.EstadoQuerendo || r.Estado == models.EstadoNaSecao {
-		log.Printf("[RICART] Já existe uma requisição em andamento, ignorando\n")
+		log.Printf("[RICART] ⚠ Ignorado: já existe requisição em andamento para %s\n", r.DroneAlvo)
 		return
 	}
 
@@ -57,8 +57,8 @@ func (r *Ricart) IniciarRequisicao(droneID string, req models.Requisicao) {
 		r.EsperandoResposta[peer] = true
 	}
 
-	log.Printf("[RICART] Iniciando requisição para drone %s (timestamp=%d), esperando %d peers\n",
-		droneID, r.RelogioLamport, len(r.EsperandoResposta))
+	log.Printf("[RICART] ── Iniciando REQUEST ── drone=%s ts=%d aguardando=%d peers: %v\n",
+		droneID, r.RelogioLamport, len(r.EsperandoResposta), r.PeersAtivos())
 
 	msg := models.Mensagem{
 		Tipo: "REQUEST",
@@ -91,12 +91,12 @@ func (r *Ricart) NotificarPeerOffline(peerID string) {
 
 	delete(r.EsperandoResposta, peerID)
 	r.RespostasRecebidas++
-	log.Printf("[RICART] Peer %s offline — contando como REPLY implícito (%d/%d)\n",
+	log.Printf("[RICART] Peer %s OFFLINE → contado como REPLY implícito (%d/%d)\n",
 		peerID, r.RespostasRecebidas, r.TotalPeers())
 
 	if r.RespostasRecebidas >= r.TotalPeers() {
 		r.Estado = models.EstadoNaSecao
-		log.Printf("[RICART] Quorum atingido após peer offline! Alocando drone %s\n", r.DroneAlvo)
+		log.Printf("[RICART] ✔ QUORUM (peer offline) → alocando drone %s\n", r.DroneAlvo)
 		go r.AoAlocar(r.DroneAlvo)
 	}
 }
@@ -125,10 +125,10 @@ func (r *Ricart) ReceberRequest(de string, droneID string, timestampDele int64) 
 	// Qualquer outro caso: responde imediatamente
 
 	if deveAdiar {
-		log.Printf("[RICART] Adiando REPLY para %s (drone=%s)\n", de, droneID)
+		log.Printf("[RICART] ↷ Adiando REPLY para %s (drone=%s) — tenho prioridade\n", de, droneID)
 		r.FilaAdiados = append(r.FilaAdiados, de)
 	} else {
-		log.Printf("[RICART] Enviando REPLY para %s (drone=%s)\n", de, droneID)
+		log.Printf("[RICART] ↩ Enviando REPLY para %s (drone=%s)\n", de, droneID)
 		r.enviarReply(de, droneID)
 	}
 }
@@ -146,18 +146,18 @@ func (r *Ricart) ReceberReply(de string, droneID string) {
 	delete(r.EsperandoResposta, de)
 	r.RespostasRecebidas++
 
-	log.Printf("[RICART] REPLY recebido de %s (%d/%d)\n", de, r.RespostasRecebidas, r.TotalPeers())
+	log.Printf("[RICART] ✉ REPLY de %s (%d/%d)\n", de, r.RespostasRecebidas, r.TotalPeers())
 
 	if r.RespostasRecebidas >= r.TotalPeers() {
 		r.Estado = models.EstadoNaSecao
-		log.Printf("[RICART] Quorum atingido! Alocando drone %s\n", droneID)
+		log.Printf("[RICART] ✔ QUORUM atingido → alocando drone %s\n", droneID)
 		go r.AoAlocar(droneID)
 	}
 }
 
 // ReceberRelease — peer liberou o drone
 func (r *Ricart) ReceberRelease(de string, droneID string) {
-	log.Printf("[RICART] RELEASE recebido de %s para drone %s\n", de, droneID)
+	log.Printf("[RICART] 🔓 RELEASE de %s (drone=%s)\n", de, droneID)
 
 	r.Mu.Lock()
 	// Se estávamos QUERENDO e este peer ainda não tinha respondido, conta como REPLY implícito
@@ -165,10 +165,10 @@ func (r *Ricart) ReceberRelease(de string, droneID string) {
 		if r.EsperandoResposta[de] {
 			delete(r.EsperandoResposta, de)
 			r.RespostasRecebidas++
-			log.Printf("[RICART] RELEASE de %s conta como REPLY implícito (%d/%d)\n", de, r.RespostasRecebidas, r.TotalPeers())
+			log.Printf("[RICART] 🔓 RELEASE de %s → REPLY implícito (%d/%d)\n", de, r.RespostasRecebidas, r.TotalPeers())
 			if r.RespostasRecebidas >= r.TotalPeers() {
 				r.Estado = models.EstadoNaSecao
-				log.Printf("[RICART] Quorum atingido via RELEASE! Alocando drone %s\n", droneID)
+				log.Printf("[RICART] ✔ QUORUM (via RELEASE) → alocando drone %s\n", droneID)
 				r.Mu.Unlock()
 				go r.AoAlocar(droneID)
 				return
@@ -195,7 +195,7 @@ func (r *Ricart) Liberar(droneID string) {
     r.FilaAdiados = []string{}
     r.Mu.Unlock()
 
-    log.Printf("[RICART] Reset completo. Pronto para nova requisição.")
+    log.Printf("[RICART] ── Reset completo. Livre para próxima requisição.\n")
 
 	// Envia RELEASE para todos
 	r.EnviarParaTodos(models.Mensagem{
@@ -254,7 +254,7 @@ func (r *Ricart) watchdog(droneID string, timestampOriginal int64, timeout time.
 		return // todos já responderam
 	}
 
-	log.Printf("[RICART] Timeout! Peers sem resposta: %v — assumindo mortos\n", pendentes)
+	log.Printf("[RICART] ⏱ Timeout! Peers sem resposta: %v → assumindo offline\n", pendentes)
 
 	// Conta os mortos como se tivessem respondido
 	r.RespostasRecebidas += len(pendentes)
@@ -265,7 +265,7 @@ func (r *Ricart) watchdog(droneID string, timestampOriginal int64, timeout time.
 	// Verifica se agora tem quorum
 	if r.RespostasRecebidas >= r.TotalPeers() {
 		r.Estado = models.EstadoNaSecao
-		log.Printf("[RICART] Quorum por timeout! Alocando drone %s\n", droneID)
+		log.Printf("[RICART] ✔ QUORUM (timeout) → alocando drone %s\n", droneID)
 		go r.AoAlocar(droneID)
 	}
 }
