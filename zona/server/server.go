@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"pbl-2/zona/handler"
 	"pbl-2/zona/models"
@@ -282,6 +283,107 @@ func BroadcastDroneUpdate(drone models.Drone) {
 	}
 }
 
+// StatusHTTP é o payload JSON retornado pelo endpoint /status
+type StatusHTTP struct {
+	Zona       string              `json:"zona"`
+	Ricart     string              `json:"ricart"`
+	Drones     []DroneHTTP         `json:"drones"`
+	Fila       []RequisicaoHTTP    `json:"fila"`
+	Peers      []PeerHTTP          `json:"peers"`
+}
+
+type DroneHTTP struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	ZonaBase  string `json:"zona_base"`
+	ZonaAtual string `json:"zona_atual"`
+	Missao    string `json:"missao,omitempty"`
+	Prioridade int   `json:"prioridade,omitempty"`
+}
+
+type RequisicaoHTTP struct {
+	Sensor     string `json:"sensor"`
+	Ocorrencia string `json:"ocorrencia"`
+	Prioridade int    `json:"prioridade"`
+}
+
+type PeerHTTP struct {
+	Zona  string `json:"zona"`
+	Vivo  bool   `json:"vivo"`
+}
+
+func iniciarHTTP() {
+	mux := http.NewServeMux()
+
+	// /status — retorna estado completo desta zona em JSON
+	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+
+		// Drones
+		dronesRaw := repo.BuscarDrones()
+		drones := make([]DroneHTTP, 0, len(dronesRaw))
+		for _, d := range dronesRaw {
+			entry := DroneHTTP{
+				ID:        d.ID,
+				Status:    string(d.Status),
+				ZonaBase:  d.ZonaBase,
+				ZonaAtual: d.ZonaAtual,
+			}
+			if d.MissaoAtual != nil {
+				entry.Missao = d.MissaoAtual.Ocorrencia
+				entry.Prioridade = d.MissaoAtual.Prioridade
+			}
+			drones = append(drones, entry)
+		}
+
+		// Fila
+		repo.FilaMutex.Lock()
+		fila := make([]RequisicaoHTTP, 0, repo.RequisicoesPendentes.Len())
+		for _, req := range *repo.RequisicoesPendentes {
+			fila = append(fila, RequisicaoHTTP{
+				Sensor:     req.Sensor,
+				Ocorrencia: req.Ocorrencia,
+				Prioridade: req.Prioridade,
+			})
+		}
+		repo.FilaMutex.Unlock()
+
+		// Peers
+		repo.Mutex.RLock()
+		peers := make([]PeerHTTP, 0, len(repo.Peers))
+		for zona, p := range repo.Peers {
+			peers = append(peers, PeerHTTP{Zona: zona, Vivo: p.Alive})
+		}
+		repo.Mutex.RUnlock()
+
+		// Estado Ricart
+		ricartEstado := "LIVRE"
+		if repo.RicartInstance != nil {
+			repo.RicartInstance.Mu.Lock()
+			ricartEstado = string(repo.RicartInstance.Estado)
+			repo.RicartInstance.Mu.Unlock()
+		}
+
+		status := StatusHTTP{
+			Zona:   getZona(),
+			Ricart: ricartEstado,
+			Drones: drones,
+			Fila:   fila,
+			Peers:  peers,
+		}
+
+		json.NewEncoder(w).Encode(status)
+	})
+
+	porta := os.Getenv("HTTP_PORT")
+	if porta == "" {
+		porta = "8080"
+	}
+	log.Printf("[HTTP] Dashboard disponível em :%s/status\n", porta)
+	http.ListenAndServe(":"+porta, mux)
+}
+
 func main() {
 	// Buscar lista de peers
 	peers := buscarPears()
@@ -489,6 +591,9 @@ func main() {
 			})
 		}
 	}()
+
+	// Servidor HTTP para o dashboard visual
+	go iniciarHTTP()
 
 	// Abrir servidor para escutar conexoes
 	listner, err := net.Listen("tcp", ":9090")

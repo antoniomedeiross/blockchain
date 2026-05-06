@@ -53,30 +53,32 @@ func AtualizarDrone(d models.Drone) {
 }
 
 // AtualizarDroneRemoto é chamado quando a atualização vem de outro peer via DRONE_UPDATE.
-// Se o drone está conectado fisicamente aqui (temos o socket), somos a fonte de verdade
-// sobre o status dele — ignoramos atualizações de status externas para não corromper o estado.
-// Apenas aceitamos a atualização completa se NÃO temos o drone conectado localmente.
+//
+// Regra de autoridade:
+//   - Se o Ricart LOCAL está QUERENDO ou NA_SEÇÃO para este drone, somos nós que estamos
+//     alocando agora — ignoramos updates externos que colidiriam com nossa alocação.
+//   - Em todos os outros casos aceitamos o update normalmente, inclusive quando o drone
+//     está fisicamente conectado aqui mas foi alocado por outro peer via Ricart.
 func AtualizarDroneRemoto(d models.Drone) {
-	DroneConnMutex.RLock()
-	_, droneConectadoAqui := DroneConns[d.ID]
-	DroneConnMutex.RUnlock()
+	// Verifica se o Ricart local está ativo para este drone
+	ricartAtivo := false
+	if RicartInstance != nil {
+		RicartInstance.Mu.Lock()
+		ricartAtivo = (RicartInstance.Estado == models.EstadoQuerendo || RicartInstance.Estado == models.EstadoNaSecao) &&
+			RicartInstance.DroneAlvo == d.ID
+		RicartInstance.Mu.Unlock()
+	}
 
 	DroneMutex.Lock()
 	defer DroneMutex.Unlock()
 
-	if droneConectadoAqui {
-		// Temos o socket físico deste drone — somos a fonte de verdade sobre o status.
-		// Aceitamos apenas a ZonaBase caso venha atualizada, mas NÃO o status.
-		existente, existe := Drones[d.ID]
-		if existe {
-			// Preserva nosso status local, atualiza só metadados não-críticos
-			existente.ZonaBase = d.ZonaBase
-			Drones[d.ID] = existente
-		}
+	if ricartAtivo {
+		// Estamos no meio de uma alocação local para este drone —
+		// ignoramos o update externo para não corromper nosso estado.
 		return
 	}
 
-	// Drone remoto: aceita normalmente
+	// Aceita a atualização normalmente
 	Drones[d.ID] = d
 }
 
