@@ -414,22 +414,13 @@ func main() {
 			drone, existe := repo.Drones[droneID]
 			if !existe || drone.Status != models.StatusLivre {
 				repo.DroneMutex.Unlock()
-				// IMPORTANTE: libera a seção crítica antes de tentar novamente
-				// Sem isso, os REPLYs adiados nunca são enviados e os peers ficam travados
 				repo.RicartInstance.Liberar(droneID)
 				go repo.TentarAlocarDaFila()
 				return
 			}
-			drone.Status = models.StatusOcupado
-			drone.ZonaAtual = getZona()
-			drone.MissaoAtual = repo.RicartInstance.RequisicaoAtual // salva missão em andamento
-			repo.Drones[droneID] = drone
+			reqAtual := repo.RicartInstance.RequisicaoAtual
 			repo.DroneMutex.Unlock()
 
-			BroadcastDroneUpdate(drone)
-			log.Printf("\n[ALOCAÇÃO] ══► Drone %s alocado com sucesso\n", droneID)
-
-			reqAtual := repo.RicartInstance.RequisicaoAtual
 			missao := models.MensagemDrone{
 				Tipo:    "MISSAO",
 				De:      getZona(),
@@ -441,26 +432,35 @@ func main() {
 				},
 				Timestamp: time.Now(),
 			}
-
-			// TENTA ENVIAR DIRETO (se estiver conectado no meu socket TCP)
 			data, _ := json.Marshal(missao)
+
 			if repo.EnviarParaDrone(droneID, data) {
-				log.Printf("[MISSÃO] ► Enviando missão diretamente para %s (local)\n", droneID)
-				// Drone local: Liberar é chamado quando MISSAO_CONCLUIDA chegar via processarDrone
+				// Drone está conectado fisicamente aqui — atualiza ZonaAtual para cá
+				repo.DroneMutex.Lock()
+				drone.Status = models.StatusOcupado
+				drone.ZonaAtual = getZona()
+				drone.MissaoAtual = reqAtual
+				repo.Drones[droneID] = drone
+				repo.DroneMutex.Unlock()
+
+				BroadcastDroneUpdate(drone)
+				log.Printf("\n[ALOCAÇÃO] ══► Drone %s alocado localmente em %s\n", droneID, getZona())
+				log.Printf("[MISSÃO] ► Missão enviada diretamente para %s\n", droneID)
+				// Liberar é chamado quando MISSAO_CONCLUIDA chegar via processarDrone
+
 			} else {
-				// DRONE REMOTO: usa ZonaAtual (onde o drone está fisicamente conectado agora),
-				// não ZonaBase (zona de origem que pode estar offline após failover).
+				// Drone não está aqui — descobre em qual zona ele está via ZonaAtual do estado distribuído
+				// NÃO sobrescreve ZonaAtual para getZona() pois não temos o drone físico
 				zonaDestino := drone.ZonaAtual
 				if zonaDestino == "" {
 					zonaDestino = drone.ZonaBase
 				}
 
-				// Se zonaDestino aponta para nós mesmos mas o drone não está em DroneConns,
-				// o estado distribuído está desatualizado (ex: sobrou de um failover anterior).
-				// Nesse caso, procuramos o drone nos peers vivos como fallback.
 				minhaZona := getZona()
+				// Se ZonaAtual aponta para nós mas não temos o socket, estado desatualizado
+				// Tenta encontrar em qual peer o drone realmente está
 				if zonaDestino == minhaZona {
-					log.Printf("[MISSÃO] ⚠ Drone %s com ZonaAtual=%s desatualizada — buscando peer vivo\n", droneID, minhaZona)
+					log.Printf("[MISSÃO] ⚠ Drone %s: ZonaAtual=%s mas não conectado aqui — buscando peer vivo\n", droneID, minhaZona)
 					repo.Mutex.RLock()
 					zonaDestino = ""
 					for id, peer := range repo.Peers {
@@ -472,14 +472,22 @@ func main() {
 					repo.Mutex.RUnlock()
 
 					if zonaDestino == "" {
-						log.Printf("[MISSÃO] ✗ Nenhum peer vivo para drone %s — Ricart liberado\n", droneID)
+						log.Printf("[MISSÃO] ✗ Nenhum peer vivo para drone %s — liberando Ricart\n", droneID)
 						repo.RicartInstance.Liberar(droneID)
 						return
 					}
-					log.Printf("[MISSÃO] ↷ Redirecionando %s → %s\n", droneID, zonaDestino)
 				}
 
-				log.Printf("[MISSÃO] ► Drone %s está em %s — repassando missão\n", droneID, zonaDestino)
+				// Atualiza status para ocupado mas mantém ZonaAtual original do drone
+				repo.DroneMutex.Lock()
+				drone.Status = models.StatusOcupado
+				drone.MissaoAtual = reqAtual
+				// ZonaAtual não é alterado — o drone está onde o estado distribuído diz
+				repo.Drones[droneID] = drone
+				repo.DroneMutex.Unlock()
+
+				BroadcastDroneUpdate(drone)
+				log.Printf("\n[ALOCAÇÃO] ══► Drone %s alocado remotamente → enviando para %s\n", droneID, zonaDestino)
 				enviarParaZona(zonaDestino, models.Mensagem{
 					Tipo:  "DESPACHAR_DRONE",
 					De:    getZona(),
