@@ -135,6 +135,18 @@ func (r *Ricart) ReceberRequest(de string, droneID string, timestampDele int64, 
 		} else {
 			euPerco = de < r.ZonaID // mesmo prior e ts, nome menor ganha → eu perco
 		}
+		
+		if euPerco {
+			// Se eu perdi para uma requisição que chegou agora, e eu já tinha
+			// recebido um REPLY ou RELEASE desse peer, eu preciso "devolver"
+			// essa permissão, pois ele vai passar na minha frente.
+			if !r.EsperandoResposta[de] {
+				r.EsperandoResposta[de] = true
+				r.RespostasRecebidas--
+				log.Printf("[RICART] ⚠ Revogando permissao anterior de %s pois ele tem maior prioridade\n", de)
+			}
+		}
+		
 		deveAdiar = !euPerco
 	}
 

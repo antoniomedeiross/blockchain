@@ -257,13 +257,29 @@ func ProximaRequisicao() (models.Requisicao, bool) {
 }
 
 func TentarAlocarDaFila() {
-	// 1. Verifica se o Ricart está livre. Se estiver ocupado, não faz nada agora.
+	// 1. Verifica o estado do Ricart.
 	RicartInstance.Mu.Lock()
 	estado := RicartInstance.Estado
+	reqAtual := RicartInstance.RequisicaoAtual
+	droneAlvo := RicartInstance.DroneAlvo
 	RicartInstance.Mu.Unlock()
 
 	if RequisicoesPendentes.Len() > 0 {
 		log.Printf("[FILA] Estado=%s | Pendentes=%d\n", estado, RequisicoesPendentes.Len())
+	}
+
+	if estado == models.EstadoQuerendo && reqAtual != nil {
+		FilaMutex.Lock()
+		if RequisicoesPendentes.Len() > 0 {
+			maiorReq := (*RequisicoesPendentes)[0]
+			if maiorReq.Prioridade > reqAtual.Prioridade {
+				FilaMutex.Unlock()
+				log.Printf("[FILA] ⚠ Preempção local: req fila (prior=%d) > req atual (prior=%d). Abortando req atual.\n", maiorReq.Prioridade, reqAtual.Prioridade)
+				RicartInstance.AbortarRequisicao(droneAlvo)
+				return // AbortarRequisicao vai chamar TentarAlocarDaFila de novo no final
+			}
+		}
+		FilaMutex.Unlock()
 	}
 
 	if estado != models.EstadoLivre {
