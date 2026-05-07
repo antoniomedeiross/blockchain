@@ -81,7 +81,13 @@ func (r *Ricart) IniciarRequisicao(droneID string, req models.Requisicao) {
 	}
 	r.EnviarParaTodos(msg)
 
-	go r.watchdog(droneID, r.TimestampRequisicao, 15*time.Second)
+	if r.RespostasRecebidas >= r.TotalPeers() && !r.Abortando {
+		r.Estado = models.EstadoNaSecao
+		log.Printf("[RICART] ✔ QUORUM IMEDIATO (zero peers online) → alocando drone %s\n", droneID)
+		go r.AoAlocar(droneID)
+	} else {
+		go r.watchdog(droneID, r.TimestampRequisicao, 15*time.Second)
+	}
 }
 
 // NotificarPeerOffline — chamado quando um peer desconecta.

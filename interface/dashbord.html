@@ -388,7 +388,7 @@ function renderZona(data, isOffline) {
         }
 
         const missaoHTML = d.missao
-          ? `<div class="drone-missao">⬡ ${nomeOcorrencia(d.missao)} [P${d.prioridade}]</div>`
+          ? `<div class="drone-missao">⬡ ${nomeOcorrencia(d.missao)} [P${d.prioridade !== undefined ? d.prioridade : 0}]</div>`
           : ''
         return `
           <div class="drone-card ${cssClass}">
