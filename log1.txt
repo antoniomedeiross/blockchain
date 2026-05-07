@@ -1,0 +1,49 @@
+peer1  | 2026/05/07 02:34:29 [peer2:9090 peer3:9090]
+peer1  | 2026/05/07 02:34:29 [P2P] Conectando a peer2:9090...
+peer1  | 2026/05/07 02:34:29 [P2P] Conectando a peer3:9090...
+peer1  | 2026/05/07 02:34:29 TCP rodando na porta 9090
+peer1  | 2026/05/07 02:34:29 [HTTP] Dashboard disponível em :8080/status
+peer1  | 2026/05/07 02:34:29 [P2P] ✔ Conectado a peer2:9090
+peer1  | 2026/05/07 02:34:29 [P2P] ✔ Identificado em peer2:9090
+peer1  | 2026/05/07 02:34:29 [P2P] peer3:9090 offline — tentando em 3s
+peer1  | 2026/05/07 02:34:29 [SYNC] ✔ Sincronizado com peer2:9090: 0 drone(s) no estado
+peer1  | 2026/05/07 02:34:29 Cliente TCP conectado: 172.23.0.4:36600
+peer1  | 2026/05/07 02:34:29 [P2P] ✔ Peer LESTE conectado (escutando em peer3:9090)
+peer1  | 2026/05/07 02:34:29 [LESTE] ← SYNC_REQUEST de: LESTE
+peer1  | 2026/05/07 02:34:29 [SYNC] → Enviando estado para LESTE: 0 drone(s)
+peer1  | 2026/05/07 02:34:31 Cliente TCP conectado: 172.23.0.2:36168
+peer1  | 2026/05/07 02:34:31 [P2P] ✔ Peer SUL conectado (escutando em peer2:9090)
+peer1  | 2026/05/07 02:34:31 [SUL] ← SYNC_REQUEST de: SUL
+peer1  | 2026/05/07 02:34:31 [SYNC] → Enviando estado para SUL: 0 drone(s)
+peer1  | 2026/05/07 02:34:32 [P2P] Conectando a peer3:9090...
+peer1  | 2026/05/07 02:34:32 [P2P] ✔ Conectado a peer3:9090
+peer1  | 2026/05/07 02:34:32 [P2P] ✔ Identificado em peer3:9090
+peer1  | 2026/05/07 02:34:32 [SYNC] ✔ Sincronizado com peer3:9090: 0 drone(s) no estado
+peer1  | 2026/05/07 02:34:34 Cliente TCP conectado: 172.23.0.5:49196
+peer1  | 2026/05/07 02:34:34 [DRONE] ✔ Drone conectado: NORTE-drone-01
+peer1  | 2026/05/07 02:34:44 Cliente TCP conectado: 172.23.0.1:34620
+peer1  | 2026/05/07 02:34:44 Cliente TCP conectado: 172.23.0.1:34634
+peer1  | 2026/05/07 02:34:44 [SENSOR] ✔ Sensor conectado: sensor-empate-1
+peer1  | 2026/05/07 02:34:44 [] ← REQUISICAO_DRONE de: sensor-empate-1
+peer1  | 2026/05/07 02:34:44 [FILA] ↓ Nova req de sensor-empate-1 enfileirada — prioridade=2 (embarcacao_deriva)
+peer1  | 2026/05/07 02:34:44 [FILA] Estado=LIVRE | Pendentes=1
+peer1  | 2026/05/07 02:34:44 [FILA] ► Disparando Ricart — prioridade=2 (embarcacao_deriva)
+peer1  | 2026/05/07 02:34:44 [RICART] ── Iniciando REQUEST ── drone=NORTE-drone-01 ts=1 prior=2 aguardando=2 peers: [LESTE SUL]
+peer1  | 2026/05/07 02:34:44 [FILA] ✔ Drone selecionado: NORTE-drone-01
+peer1  | 2026/05/07 02:34:44 [RICART] ✉ REPLY de LESTE (1/2)
+peer1  | 2026/05/07 02:34:44 [RICART] ✉ REPLY de SUL (2/2)
+peer1  | 2026/05/07 02:34:44 [RICART] ✔ QUORUM atingido → alocando drone NORTE-drone-01
+peer1  | 2026/05/07 02:34:44 
+peer1  | [ALOCAÇÃO] ══► Drone NORTE-drone-01 alocado localmente em NORTE
+peer1  | 2026/05/07 02:34:44 [MISSÃO] ► Missão enviada diretamente para NORTE-drone-01
+peer1  | 2026/05/07 02:34:49 
+peer1  | ┌─── DRONES LOCAIS [NORTE] ───
+peer1  | 2026/05/07 02:34:49   ID: NORTE-drone-01 | Status: ocupado | Base: NORTE | Atual: NORTE
+peer1  | 2026/05/07 02:34:49 └──────────────────────────────────
+peer1  | 2026/05/07 02:34:49 [DRONE] ✔ Drone NORTE-drone-01 concluiu missão — liberando
+peer1  | 2026/05/07 02:34:49 [RICART] ── Reset completo. Livre para próxima requisição.
+peer1  | 2026/05/07 02:34:49 [RICART] ↩ Enviando REPLY para LESTE (drone=NORTE-drone-01)
+peer1  | 2026/05/07 02:34:49 [RICART] ↩ Enviando REPLY para SUL (drone=NORTE-drone-01)
+peer1  | 2026/05/07 02:34:49 [ESTADO] Drone NORTE-drone-01 → ocupado (via peer2:9090)
+peer1  | 2026/05/07 02:34:49 [MISSÃO] ◄ Recebi DESPACHAR de peer — enviando missão para NORTE-drone-01
+peer1  | 2026/05/07 02:34:49 [RICART] 🔓 RELEASE de SUL (drone=NORTE-drone-01)

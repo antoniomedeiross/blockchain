@@ -14,6 +14,7 @@ type Ricart struct {
 	RelogioLamport      int64
 	TimestampRequisicao  int64  // timestamp do momento que fez o REQUEST
 	PrioridadeRequisicao int    // prioridade da requisição atual
+	ReqTimestampFisico   int64  // timestamp fisico para desempate
 	DroneAlvo            string // drone que está tentando alocar
 
 	RespostasRecebidas int             // quantos REPLYs já chegaram
@@ -51,6 +52,7 @@ func (r *Ricart) IniciarRequisicao(droneID string, req models.Requisicao) {
 	r.RelogioLamport++
 	r.TimestampRequisicao = r.RelogioLamport
 	r.PrioridadeRequisicao = req.Prioridade
+	r.ReqTimestampFisico = req.Timestamp.UnixNano()
 	r.Estado = models.EstadoQuerendo
 	r.DroneAlvo = droneID
 	r.RespostasRecebidas = 0
@@ -69,11 +71,12 @@ func (r *Ricart) IniciarRequisicao(droneID string, req models.Requisicao) {
 		Tipo: "REQUEST",
 		De:   r.ZonaID,
 		Dados: models.MensagemRicart{
-			Tipo:       "REQUEST",
-			De:         r.ZonaID,
-			DroneID:    droneID,
-			Timestamp:  r.RelogioLamport,
-			Prioridade: req.Prioridade,
+			Tipo:         "REQUEST",
+			De:           r.ZonaID,
+			DroneID:      droneID,
+			Timestamp:    r.RelogioLamport,
+			Prioridade:   req.Prioridade,
+			ReqTimestamp: req.Timestamp.UnixNano(),
 		},
 	}
 	r.EnviarParaTodos(msg)
@@ -108,7 +111,7 @@ func (r *Ricart) NotificarPeerOffline(peerID string) {
 }
 
 
-func (r *Ricart) ReceberRequest(de string, droneID string, timestampDele int64, prioridadeDele int) {
+func (r *Ricart) ReceberRequest(de string, droneID string, timestampDele int64, prioridadeDele int, reqTimestampDele int64) {
 	r.Mu.Lock()
 	defer r.Mu.Unlock()
 
@@ -132,6 +135,8 @@ func (r *Ricart) ReceberRequest(de string, droneID string, timestampDele int64, 
 			euPerco = prioridadeDele > r.PrioridadeRequisicao // ele tem prioridade maior → eu perco
 		} else if timestampDele != r.TimestampRequisicao {
 			euPerco = timestampDele < r.TimestampRequisicao // mesmo prior, ele enviou antes → eu perco
+		} else if reqTimestampDele != r.ReqTimestampFisico {
+			euPerco = reqTimestampDele < r.ReqTimestampFisico // desempate pelo tempo fisico da ocorrencia
 		} else {
 			euPerco = de < r.ZonaID // mesmo prior e ts, nome menor ganha → eu perco
 		}

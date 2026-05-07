@@ -18,7 +18,12 @@ type FilaHeap []models.Requisicao
 func (f FilaHeap) Len() int { return len(f) }
 
 // Maior prioridade sai primeiro (max-heap)
-func (f FilaHeap) Less(i, j int) bool { return f[i].Prioridade > f[j].Prioridade }
+func (f FilaHeap) Less(i, j int) bool {
+	if f[i].Prioridade == f[j].Prioridade {
+		return f[i].Timestamp.Before(f[j].Timestamp)
+	}
+	return f[i].Prioridade > f[j].Prioridade
+}
 
 func (f FilaHeap) Swap(i, j int) { f[i], f[j] = f[j], f[i] }
 

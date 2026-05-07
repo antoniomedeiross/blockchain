@@ -1,0 +1,54 @@
+peer3  | 2026/05/07 02:34:29 [peer1:9090 peer2:9090]
+peer3  | 2026/05/07 02:34:29 [P2P] Conectando a peer2:9090...
+peer3  | 2026/05/07 02:34:29 TCP rodando na porta 9090
+peer3  | 2026/05/07 02:34:29 [P2P] Conectando a peer1:9090...
+peer3  | 2026/05/07 02:34:29 [HTTP] Dashboard disponível em :8080/status
+peer3  | 2026/05/07 02:34:29 [P2P] ✔ Conectado a peer2:9090
+peer3  | 2026/05/07 02:34:29 [P2P] ✔ Identificado em peer2:9090
+peer3  | 2026/05/07 02:34:29 [P2P] ✔ Conectado a peer1:9090
+peer3  | 2026/05/07 02:34:29 [P2P] ✔ Identificado em peer1:9090
+peer3  | 2026/05/07 02:34:29 [SYNC] ✔ Sincronizado com peer2:9090: 0 drone(s) no estado
+peer3  | 2026/05/07 02:34:29 [SYNC] ✔ Sincronizado com peer1:9090: 0 drone(s) no estado
+peer3  | 2026/05/07 02:34:31 Cliente TCP conectado: 172.23.0.2:40620
+peer3  | 2026/05/07 02:34:31 [P2P] ✔ Peer SUL conectado (escutando em peer2:9090)
+peer3  | 2026/05/07 02:34:31 [SUL] ← SYNC_REQUEST de: SUL
+peer3  | 2026/05/07 02:34:31 [SYNC] → Enviando estado para SUL: 0 drone(s)
+peer3  | 2026/05/07 02:34:32 Cliente TCP conectado: 172.23.0.3:42720
+peer3  | 2026/05/07 02:34:32 [P2P] ✔ Peer NORTE conectado (escutando em peer1:9090)
+peer3  | 2026/05/07 02:34:32 [NORTE] ← SYNC_REQUEST de: NORTE
+peer3  | 2026/05/07 02:34:32 [SYNC] → Enviando estado para NORTE: 0 drone(s)
+peer3  | 2026/05/07 02:34:34 [ESTADO] Drone NORTE-drone-01 → livre (via peer1:9090)
+peer3  | 2026/05/07 02:34:44 Cliente TCP conectado: 172.23.0.1:60726
+peer3  | 2026/05/07 02:34:44 [RICART] ↩ Enviando REPLY para NORTE (drone=NORTE-drone-01)
+peer3  | 2026/05/07 02:34:44 [ESTADO] Drone NORTE-drone-01 → ocupado (via peer1:9090)
+peer3  | 2026/05/07 02:34:45 Cliente TCP conectado: 172.23.0.1:60738
+peer3  | 2026/05/07 02:34:45 [SENSOR] ✔ Sensor conectado: sensor-empate-3
+peer3  | 2026/05/07 02:34:45 [] ← REQUISICAO_DRONE de: sensor-empate-3
+peer3  | 2026/05/07 02:34:45 [FILA] ↓ Nova req de sensor-empate-3 enfileirada — prioridade=2 (objeto_nao_identificado)
+peer3  | 2026/05/07 02:34:45 [FILA] Estado=LIVRE | Pendentes=1
+peer3  | 2026/05/07 02:34:49 [FILA] ⏫ Envelhecimento: 1 req(s) subiram de prioridade
+peer3  | 2026/05/07 02:34:49 
+peer3  | ┌─── DRONES LOCAIS [LESTE] ───
+peer3  | 2026/05/07 02:34:49   ID: NORTE-drone-01 | Status: ocupado | Base: NORTE | Atual: NORTE
+peer3  | 2026/05/07 02:34:49 └──────────────────────────────────
+peer3  | 2026/05/07 02:34:49 [ESTADO] Drone NORTE-drone-01 → livre (via peer1:9090)
+peer3  | 2026/05/07 02:34:49 [RICART] 🔓 RELEASE de NORTE (drone=NORTE-drone-01)
+peer3  | 2026/05/07 02:34:49 [FILA] Estado=LIVRE | Pendentes=1
+peer3  | 2026/05/07 02:34:49 [FILA] ► Disparando Ricart — prioridade=3 (objeto_nao_identificado)
+peer3  | 2026/05/07 02:34:49 [RICART] ── Iniciando REQUEST ── drone=NORTE-drone-01 ts=3 prior=3 aguardando=2 peers: [SUL NORTE]
+peer3  | 2026/05/07 02:34:49 [FILA] ✔ Drone selecionado: NORTE-drone-01
+peer3  | 2026/05/07 02:34:49 [RICART] ✉ REPLY de NORTE (1/2)
+peer3  | 2026/05/07 02:34:49 [RICART-TIE] Tie-breaker entre SUL e mim(LESTE): priorDele=3 vs priorMinha=3 | tsDele=3 vs tsMeu=3 | reqTsDele=1778121284819924500 vs reqTsMeu=1778121285322707662 | euPerco=true
+peer3  | 2026/05/07 02:34:49 [RICART] ↩ Enviando REPLY para SUL (drone=NORTE-drone-01)
+peer3  | 2026/05/07 02:34:49 [RICART] ⚠ DRONE_UPDATE: NORTE-drone-01 já está ocupado por outro peer — abortando requisição local
+peer3  | 2026/05/07 02:34:49 [ESTADO] Drone NORTE-drone-01 → ocupado (via peer2:9090)
+peer3  | 2026/05/07 02:34:49 [RICART] 🔓 RELEASE de SUL (drone=NORTE-drone-01)
+peer3  | 2026/05/07 02:34:49 [RICART] 🔓 RELEASE de SUL → REPLY implícito (2/2)
+peer3  | 2026/05/07 02:34:49 [RICART] ✉ REPLY duplicado de SUL — ignorado
+peer3  | 2026/05/07 02:34:49 [RICART] ✗ Abortando requisição para NORTE-drone-01 — drone já alocado por outro peer
+peer3  | 2026/05/07 02:34:49 [RICART] ↩ Recolocando req 'objeto_nao_identificado' na fila após abort
+peer3  | 2026/05/07 02:34:49 [RICART] ── Abort completo. Enviando REPLYs adiados e voltando para fila.
+peer3  | 2026/05/07 02:34:49 [FILA] Estado=LIVRE | Pendentes=1
+peer3  | 2026/05/07 02:34:49 [FILA] Estado=LIVRE | Pendentes=1
+peer3  | 2026/05/07 02:34:49 [FILA] Estado=LIVRE | Pendentes=1
+peer3  | 2026/05/07 02:34:49 [FILA] Estado=LIVRE | Pendentes=1

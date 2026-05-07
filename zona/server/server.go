@@ -162,7 +162,7 @@ func conectarAosPeers(peers []string) {
 						}
 						switch mensagem.Tipo {
 						case "REQUEST":
-							repo.RicartInstance.ReceberRequest(ricartMsg.De, ricartMsg.DroneID, ricartMsg.Timestamp, ricartMsg.Prioridade)
+							repo.RicartInstance.ReceberRequest(ricartMsg.De, ricartMsg.DroneID, ricartMsg.Timestamp, ricartMsg.Prioridade, ricartMsg.ReqTimestamp)
 						case "REPLY":
 							repo.RicartInstance.ReceberReply(ricartMsg.De, ricartMsg.DroneID)
 						case "RELEASE":

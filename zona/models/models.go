@@ -98,6 +98,7 @@ type MensagemRicart struct {
     DroneID    string `json:"drone_id"`   // qual drone está sendo disputado
     Timestamp  int64  `json:"timestamp"`  // relógio de Lamport
     Prioridade int    `json:"prioridade"` // prioridade da requisição (maior = mais urgente)
+    ReqTimestamp int64 `json:"req_timestamp"` // timestamp físico da requisição para desempate
 }
 
 
