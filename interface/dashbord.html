@@ -352,6 +352,7 @@ function renderZona(data, isOffline) {
 
   // Drones a exibir: da base desta zona + físicos aqui (failover) + alocados por esta zona
   const dronesExibir = drones.filter(d =>
+    true ||
     d.zona_base === zona ||    // drone da base
     d.zona_atual === zona ||   // drone físico aqui (failover)
     gerenciados.has(d.id)      // drone alocado por esta zona (pode estar em outro lugar)
