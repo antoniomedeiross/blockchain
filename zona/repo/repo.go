@@ -11,10 +11,12 @@ import (
 	"time"
 )
 
-// --- Heap de prioridade para requisições ---
+// --- Heap de prioridade para requisições ----------------------------
 
+// FilaHeap é um heap de Requisicao, ordenado por prioridade e timestamp para desempate.
 type FilaHeap []models.Requisicao
 
+// Len, Less e Swap são necessários para implementar heap.Interface
 func (f FilaHeap) Len() int { return len(f) }
 
 // Maior prioridade sai primeiro (max-heap)
@@ -25,12 +27,15 @@ func (f FilaHeap) Less(i, j int) bool {
 	return f[i].Prioridade > f[j].Prioridade
 }
 
+// Swap e Push/Pop são necessários para implementar heap.Interface
 func (f FilaHeap) Swap(i, j int) { f[i], f[j] = f[j], f[i] }
 
+// Push e Pop usam ponteiros porque modificam o slice
 func (f *FilaHeap) Push(x any) {
 	*f = append(*f, x.(models.Requisicao))
 }
 
+// Pop remove e retorna o último elemento (o de maior prioridade)
 func (f *FilaHeap) Pop() any {
 	old := *f
 	n := len(old)
@@ -44,7 +49,7 @@ var Mutex sync.RWMutex
 
 var Peers = make(map[string]models.Peer)
 
-// ALGORITMO RICART
+// ALGORITMO RICART --------------------------------------------------
 var RicartInstance *ricart.Ricart
 
 // DRONES ------------------------------------------------------------
@@ -57,15 +62,10 @@ func AtualizarDrone(d models.Drone) {
 	Drones[d.ID] = d
 }
 
+
 // AtualizarDroneRemoto é chamado quando a atualização vem de outro peer via DRONE_UPDATE.
-//
-// Regra de autoridade:
-//   - Se o Ricart LOCAL está NA_SEÇÃO para este drone, somos nós que estamos usando —
-//     ignoramos qualquer update externo para não corromper nosso estado.
-//   - Se o Ricart LOCAL está QUERENDO e chega um update de "ocupado" para o mesmo drone,
-//     significa que PERDEMOS a corrida — aceitamos o update e abortamos nossa requisição.
-//   - Em todos os outros casos aceitamos o update normalmente.
 func AtualizarDroneRemoto(d models.Drone) {
+	// Se o Ricart está ativo, precisamos verificar se essa atualização impacta nossa requisição atual
 	if RicartInstance != nil {
 		RicartInstance.Mu.Lock()
 		estado := RicartInstance.Estado
@@ -81,17 +81,17 @@ func AtualizarDroneRemoto(d models.Drone) {
 		// perdemos a corrida: aceita o update e aborta o Ricart localmente
 		if estado == models.EstadoQuerendo && droneAlvo == d.ID && d.Status == models.StatusOcupado {
 			log.Printf("[RICART] ⚠ DRONE_UPDATE: %s já está ocupado por outro peer — abortando requisição local\n", d.ID)
-			// CRÍTICO: seta Abortando=true DENTRO do lock do Ricart antes de soltar,
-			// para que ReceberRelease/watchdog que adquirirem o lock logo depois
-			// já vejam o flag e não acionem AoAlocar.
+
 			RicartInstance.Mu.Lock()
 			if RicartInstance.Estado == models.EstadoQuerendo && RicartInstance.DroneAlvo == d.ID {
 				RicartInstance.Abortando = true
 			}
+
 			RicartInstance.Mu.Unlock()
 			DroneMutex.Lock()
 			Drones[d.ID] = d
 			DroneMutex.Unlock()
+
 			go RicartInstance.AbortarRequisicao(d.ID)
 			return
 		}
@@ -110,6 +110,8 @@ func AtualizarDroneRemoto(d models.Drone) {
 	}
 }
 
+
+// busca uma cópia do mapa de drones para enviar ou printar
 func BuscarDrones() map[string]models.Drone {
 	DroneMutex.RLock()
 	defer DroneMutex.RUnlock()
@@ -120,7 +122,8 @@ func BuscarDrones() map[string]models.Drone {
 	return copia
 }
 
-// FUNCAO PARA SELECIONAR UM DRONE LIVRE (USADA NA HMI)
+
+// FUNCAO PARA SELECIONAR UM DRONE LIVRE CHAMADO QUANDO VAI INICIAR O RICART
 func SelecionarDroneLivre() (models.Drone, bool) {
 	DroneMutex.RLock()
 	defer DroneMutex.RUnlock()
@@ -133,10 +136,11 @@ func SelecionarDroneLivre() (models.Drone, bool) {
 	return models.Drone{}, false
 }
 
-// DRONES
-// repo/drones.go — adiciona
-var DroneConns = make(map[string]net.Conn) // droneID
-var DroneConnMutex sync.RWMutex
+
+// DRONES -------------------------------------------------------------
+
+var DroneConns = make(map[string]net.Conn) // droneID -> conexão TCP
+var DroneConnMutex sync.RWMutex // protege o mapa de conexões dos drones
 
 // DronesGerenciados rastreia quais drones foram alocados via Ricart por esta zona.
 // Um drone entra aqui quando AoAlocar é chamado e sai quando Liberar é chamado.
@@ -188,6 +192,8 @@ func EnviarParaDrone(droneID string, msg []byte) bool {
 		return false
 	}
 	_, err := conn.Write(append(msg, '\n'))
+
+	
 	return err == nil
 }
 

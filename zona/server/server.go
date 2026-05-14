@@ -15,7 +15,40 @@ import (
 	"time"
 )
 
+// --- VARIÁVEIS GLOBAIS -------------------------------------------------
 var RicartInstance *ricart.Ricart
+
+// StatusHTTP é o payload JSON retornado pelo endpoint /status
+type StatusHTTP struct {
+	Zona              string           `json:"zona"`
+	Ricart            string           `json:"ricart"`
+	Drones            []DroneHTTP      `json:"drones"`
+	Fila              []RequisicaoHTTP `json:"fila"`
+	Peers             []PeerHTTP       `json:"peers"`
+	DronesGerenciados []string         `json:"drones_gerenciados"`
+}
+
+type DroneHTTP struct {
+	ID         string `json:"id"`
+	Status     string `json:"status"`
+	ZonaBase   string `json:"zona_base"`
+	ZonaAtual  string `json:"zona_atual"`
+	Missao     string `json:"missao,omitempty"`
+	Prioridade int    `json:"prioridade,omitempty"`
+}
+
+type RequisicaoHTTP struct {
+	Sensor     string `json:"sensor"`
+	Ocorrencia string `json:"ocorrencia"`
+	Prioridade int    `json:"prioridade"`
+}
+
+type PeerHTTP struct {
+	Zona string `json:"zona"`
+	Vivo bool   `json:"vivo"`
+}
+
+// --- FUNÇÕES AUXILIARES -------------------------------------------------
 
 // Funcao para buscar os ips das zonas via variaveis de ambiente
 func buscarPears() []string {
@@ -40,20 +73,26 @@ func conectarAosPeers(peers []string) {
 		if peerAddr == "" {
 			continue
 		}
+
+		// Conecta a cada peer em uma goroutine separada para não bloquear o main
 		go func(addr string) {
 			for {
 				log.Printf("[P2P] Conectando a %s...\n", addr)
+
+				// Timeout de 5s para não travar se o peer estiver offline
 				conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 				if err != nil {
 					log.Printf("[P2P] %s offline — tentando em 3s\n", addr)
 					time.Sleep(3 * time.Second)
 					continue
 				}
+
 				log.Printf("[P2P] ✔ Conectado a %s\n", addr)
 
 				// 1. Enviar identificação
 				minhaZona := getZona()
-				meuAddr := os.Getenv("MY_ADDR") 
+				meuAddr := os.Getenv("MY_ADDR")
+
 				conn.Write([]byte("IAM:PEER:" + minhaZona + ":" + meuAddr + "\n"))
 
 				// 2. Aguardar confirmação
@@ -68,7 +107,7 @@ func conectarAosPeers(peers []string) {
 
 				log.Printf("[P2P] ✔ Identificado em %s\n", addr)
 
-				// 3. Pedir estado dos drones
+				// 3. Pedir estado e lista dos drones
 				syncReq := models.Mensagem{
 					Tipo:      "SYNC_REQUEST",
 					De:        minhaZona,
@@ -83,6 +122,7 @@ func conectarAosPeers(peers []string) {
 					if err != nil {
 						log.Printf("[P2P] ✗ Conexão com %s perdida\n", addr)
 						conn.Close()
+
 						// Notifica o Ricart: busca o ZonaID deste peer pelo endereço
 						repo.Mutex.RLock()
 						for zonaID, peer := range repo.Peers {
@@ -96,20 +136,26 @@ func conectarAosPeers(peers []string) {
 					reconectar:
 						break
 					}
+
+					// processar mensagem recebida ------------------------------------------
+
 					msg = strings.TrimSpace(msg)
 					if msg == "" {
 						continue
 					}
 
 					var mensagem models.Mensagem
+
 					if err := json.Unmarshal([]byte(msg), &mensagem); err != nil {
 						log.Printf("Erro ao deserializar mensagem de %s: %v\n", addr, err)
 						continue
 					}
 
-					// log suprimido: [OUTGOING] muito verboso para mensagens rotineiras
+					// Processa a mensagem de acordo com o tipo
 
 					switch mensagem.Tipo {
+
+					// SYNC_RESPONSE é a resposta ao SYNC_REQUEST enviado logo após a conexão
 					case "SYNC_RESPONSE":
 						dadosJSON, _ := json.Marshal(mensagem.Dados)
 						var drones map[string]models.Drone
@@ -117,11 +163,14 @@ func conectarAosPeers(peers []string) {
 							log.Printf("Erro ao parsear SYNC_RESPONSE: %v\n", err)
 							continue
 						}
+
+						// Atualiza o estado local com os drones do peer
 						for _, d := range drones {
 							repo.AtualizarDroneRemoto(d)
 						}
 						log.Printf("[SYNC] ✔ Sincronizado com %s: %d drone(s) no estado\n", addr, len(drones))
 
+					// DRONE_UPDATE é enviado por um peer quando um drone muda de estado (alocado, liberado, offline)
 					case "DRONE_UPDATE":
 						dadosJSON, _ := json.Marshal(mensagem.Dados)
 						var drone models.Drone
@@ -140,6 +189,7 @@ func conectarAosPeers(peers []string) {
 							}()
 						}
 
+					// DRONES_RESPONSE é a resposta ao pedido de lista de drones (DEBUUUUG)
 					case "DRONES_RESPONSE":
 						dadosJSON, _ := json.Marshal(mensagem.Dados)
 						var drones map[string]models.Drone
@@ -153,6 +203,8 @@ func conectarAosPeers(peers []string) {
 								d.ID, d.Status, d.ZonaBase, d.ZonaAtual)
 						}
 						log.Printf("└────────────────────────────\n")
+
+					// MENSAGENS DO SENSOR E RICART (REQUISICAO_DRONE, REQUEST, REPLY, RELEASE) são processadas no handler para não misturar lógica de rede com lógica de alocação
 					case "REQUEST", "REPLY", "RELEASE":
 						dadosJSON, _ := json.Marshal(mensagem.Dados)
 						var ricartMsg models.MensagemRicart
@@ -161,13 +213,20 @@ func conectarAosPeers(peers []string) {
 							continue
 						}
 						switch mensagem.Tipo {
+
+						// se for REQUEST, passa para o Ricart processar a requisição de outro peer
 						case "REQUEST":
 							repo.RicartInstance.ReceberRequest(ricartMsg.De, ricartMsg.DroneID, ricartMsg.Timestamp, ricartMsg.Prioridade, ricartMsg.ReqTimestamp)
+
+						// se for REPLY, passa para o Ricart processar a resposta de outro peer
 						case "REPLY":
 							repo.RicartInstance.ReceberReply(ricartMsg.De, ricartMsg.DroneID)
+
+						// se for RELEASE, passa para o Ricart processar a liberação de outro peer
 						case "RELEASE":
 							repo.RicartInstance.ReceberRelease(ricartMsg.De, ricartMsg.DroneID)
 
+						// se for REQUISICAO_DRONE, é uma nova requisição vinda de outro peer — tenta alocar um drone para ela
 						case "REQUISICAO_DRONE":
 							dadosJSON, _ := json.Marshal(mensagem.Dados)
 							var req models.Requisicao
@@ -186,9 +245,12 @@ func conectarAosPeers(peers []string) {
 									// fila vem no próximo passo
 									return
 								}
+								// Se tem drone livre, tenta alocar imediatamente sem passar pela fila
 								repo.RicartInstance.IniciarRequisicao(drone.ID, req)
 							}()
 						}
+
+					// DESPACHAR_DRONE é uma mensagem interna entre peers para enviar a missão para o drone físico na zona correta
 					case "DESPACHAR_DRONE":
 						dadosJSON, _ := json.Marshal(mensagem.Dados)
 						var missao models.MensagemDrone
@@ -209,6 +271,7 @@ func conectarAosPeers(peers []string) {
 
 				}
 
+				// Se a conexão cair, tenta reconectar depois de um tempo
 				log.Printf("[P2P] ↻ Reconectando com %s...\n", addr)
 				time.Sleep(5 * time.Second)
 			}
@@ -248,33 +311,25 @@ func enviarParaZona(zonaID string, mensagem models.Mensagem) {
 	peer.Conn.Write(append(data, '\n'))
 }
 
-// FUNCAO QUE SIMULAA OS DRONESSSSS
-func seedDrones() {
-	minhaZona := getZona()
-	dronesIniciais := []models.Drone{
-		{ID: minhaZona + "-drone-01", Status: models.StatusLivre, ZonaBase: minhaZona, ZonaAtual: minhaZona},
-		{ID: minhaZona + "-drone-02", Status: models.StatusLivre, ZonaBase: minhaZona, ZonaAtual: minhaZona},
-	}
-	for _, d := range dronesIniciais {
-		repo.AtualizarDrone(d)
-	}
-}
-
 // FUNCAO DE BROADCAST ENTRE OS PEEARS
 func BroadcastDroneUpdate(drone models.Drone) {
 	repo.Mutex.RLock()
+	// copia do mapa de peers para enviar update
 	peers := make(map[string]models.Peer)
 	for k, v := range repo.Peers {
 		peers[k] = v
 	}
 	repo.Mutex.RUnlock()
 
+	// cria mensagem de update do drone para enviar a todos os peers
 	mensagem := models.Mensagem{
 		Tipo:      "DRONE_UPDATE",
 		De:        getZona(),
 		Dados:     drone,
 		Timestamp: time.Now(),
 	}
+
+	// transforma a mensagem em JSON e envia para todos os peers vivos
 	data, _ := json.Marshal(mensagem)
 	for _, peer := range peers {
 		if peer.Alive && peer.Conn != nil {
@@ -283,36 +338,7 @@ func BroadcastDroneUpdate(drone models.Drone) {
 	}
 }
 
-// StatusHTTP é o payload JSON retornado pelo endpoint /status
-type StatusHTTP struct {
-	Zona              string              `json:"zona"`
-	Ricart            string              `json:"ricart"`
-	Drones            []DroneHTTP         `json:"drones"`
-	Fila              []RequisicaoHTTP    `json:"fila"`
-	Peers             []PeerHTTP          `json:"peers"`
-	DronesGerenciados []string            `json:"drones_gerenciados"`
-}
-
-type DroneHTTP struct {
-	ID        string `json:"id"`
-	Status    string `json:"status"`
-	ZonaBase  string `json:"zona_base"`
-	ZonaAtual string `json:"zona_atual"`
-	Missao    string `json:"missao,omitempty"`
-	Prioridade int   `json:"prioridade,omitempty"`
-}
-
-type RequisicaoHTTP struct {
-	Sensor     string `json:"sensor"`
-	Ocorrencia string `json:"ocorrencia"`
-	Prioridade int    `json:"prioridade"`
-}
-
-type PeerHTTP struct {
-	Zona  string `json:"zona"`
-	Vivo  bool   `json:"vivo"`
-}
-
+// Porta HTTP para a interface consumir os dados dos peers
 func iniciarHTTP() {
 	mux := http.NewServeMux()
 
@@ -366,6 +392,7 @@ func iniciarHTTP() {
 			repo.RicartInstance.Mu.Unlock()
 		}
 
+		// Monta struct de status completo para enviar como JSON no endpoint
 		status := StatusHTTP{
 			Zona:              getZona(),
 			Ricart:            ricartEstado,
@@ -386,6 +413,7 @@ func iniciarHTTP() {
 	http.ListenAndServe(":"+porta, mux)
 }
 
+// --- MAIN -----------------------------------------------------------------------------
 func main() {
 	// Buscar lista de peers
 	peers := buscarPears()
@@ -459,6 +487,27 @@ func main() {
 				log.Printf("\n[ALOCAÇÃO] ══► Drone %s alocado localmente em %s\n", droneID, getZona())
 				log.Printf("[MISSÃO] ► Missão enviada diretamente para %s\n", droneID)
 				// Liberar é chamado quando MISSAO_CONCLUIDA chegar via processarDrone
+				// watchdog: se o drone não concluir em 6s, libera
+				go func() {
+					time.Sleep(6 * time.Second)
+					repo.DroneMutex.RLock()
+					d := repo.Drones[droneID]
+					repo.DroneMutex.RUnlock()
+
+					if d.Status == models.StatusOcupado && d.MissaoAtual != nil {
+						log.Printf("[WATCHDOG] ⚠ Drone %s não concluiu missão em 60s — liberando\n", droneID)
+						repo.DroneMutex.Lock()
+						missaoPerdida := d.MissaoAtual
+						d.MissaoAtual = nil
+						d.Status = models.StatusLivre
+						repo.Drones[droneID] = d
+						repo.DroneMutex.Unlock()
+
+						repo.Enfileirar(*missaoPerdida)
+						repo.RicartInstance.Liberar(droneID)
+						go repo.TentarAlocarDaFila()
+					}
+				}()
 
 			} else {
 				// Drone não está aqui — descobre em qual zona ele está via ZonaAtual do estado distribuído
@@ -531,16 +580,18 @@ func main() {
 			}
 			return lista
 		},
+
 		TentarAlocar: func() {
 			time.Sleep(200 * time.Millisecond) // pequeno delay para o DRONE_UPDATE chegar antes
 			repo.TentarAlocarDaFila()
 		},
+
 		ReenfileirarReq: func(req models.Requisicao) {
 			repo.Enfileirar(req)
 		},
 	}
 
-	// Configura função de broadcast para o Ricart
+	// Configura função de broadcast do repositório para enviar atualizações de drone para os peers
 	repo.BroadcastFn = BroadcastDroneUpdate
 
 	// // Enviar heartbeat periodicamente /////////////////////////////////////////////////////////////////////////
@@ -561,41 +612,7 @@ func main() {
 	// 	}
 	// }()
 
-	// Enviar dados customizados periodicamente ////////////////////////////////////////////////////////////////
-	// go func() {
-	// 	minhaZona := getZona()
-	// 	ticker := time.NewTicker(10 * time.Second)
-	// 	defer ticker.Stop()
-
-	// 	for range ticker.C {
-	// 		mensagem := models.Mensagem{
-	// 			Tipo:      "DATA",
-	// 			De:        minhaZona,
-	// 			Para:      "", // broadcast
-	// 			Dados:     map[string]string{"status": "online", "timestamp": time.Now().String()},
-	// 			Timestamp: time.Now(),
-	// 		}
-	// 		enviarParaTodos(mensagem)
-	// 	}
-	// }()
-
-	// // TESTE ALOCACAO DE DRONES
-	// go func() {
-	// 	time.Sleep(30 * time.Second)
-	// 	ticker := time.NewTicker(25 * time.Second)
-	// 	defer ticker.Stop()
-	// 	for range ticker.C {
-	// 		drone, ok := repo.SelecionarDroneLivre()
-	// 		if !ok {
-	// 			log.Printf("[TEST] Nenhum drone livre disponível\n")
-	// 			continue
-	// 		}
-	// 		log.Printf("[TEST] Drone livre encontrado: %s — iniciando requisição\n", drone.ID)
-	// 		repo.RicartInstance.IniciarRequisicao(drone.ID)
-	// 	}
-	// }()
-
-	// debug ///////////////////////////////////////////////////////////////////////////
+	// ======== DEBUG ==================================================================
 	go func() {
 		ticker := time.NewTicker(20 * time.Second)
 		defer ticker.Stop()
@@ -618,7 +635,7 @@ func main() {
 		}
 	}()
 
-	// Servidor HTTP para o dashboard visual
+	// Servidor HTTP para interface
 	go iniciarHTTP()
 
 	// Abrir servidor para escutar conexoes

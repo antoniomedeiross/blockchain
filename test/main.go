@@ -173,9 +173,9 @@ func teste1Prioridade() {
 		ocorrencia string
 		prioridade int
 	}{
-		{"falha_sinalizacao", 0},
+		{"falha_sinalizacao", 5},
 		{"congestionamento_corredor", 2},
-		{"suspeita_bloqueio_rota", 5},
+		{"suspeita_bloqueio_rota", 3},
 		{"embarcacao_deriva", 1},
 		{"inspecao_visual_urgente", 4},
 	}
@@ -249,9 +249,15 @@ func teste3Distribuicao() {
 		prioridade                     int
 	}
 	zonas := []cfg{
+		{*addrPeer1, "NORTE", "sensor-dist-norte", "replanejamento_risco_ambiental", 5},
 		{*addrPeer1, "NORTE", "sensor-dist-norte", "replanejamento_risco_ambiental", 2},
+
 		{*addrPeer2, "SUL", "sensor-dist-sul", "falha_sinalizacao", 4},
-		{*addrPeer3, "LESTE", "sensor-dist-leste", "inspecao_visual_urgente", 1},
+		{*addrPeer2, "SUL", "sensor-dist-sul", "replanejamento_risco_ambiental", 2},
+
+		{*addrPeer3, "LESTE", "sensor-dist-leste", "inspecao_visual_urgente", 2},
+		{*addrPeer3, "LESTE", "sensor-dist-leste", "replanejamento_risco_ambiental", 1},
+
 	}
 
 	var wg sync.WaitGroup
@@ -272,10 +278,6 @@ func teste3Distribuicao() {
 	wg.Wait()
 
 	separador()
-	aviso("Observe os logs dos 3 peers:")
-	fmt.Printf("  %sdocker compose logs -f peer1%s  → prioridade 2\n", Ciano, Reset)
-	fmt.Printf("  %sdocker compose logs -f peer2%s  → prioridade 4 (deve ser atendida primeiro)\n", Ciano, Reset)
-	fmt.Printf("  %sdocker compose logs -f peer3%s  → prioridade 1 (atendida por último)\n", Ciano, Reset)
 }
 
 func teste4Carga() {
@@ -302,7 +304,10 @@ func teste4Carga() {
 		go func(idx int) {
 			defer wg.Done()
 			sensorID := fmt.Sprintf("sensor-carga-%02d", idx+1)
-			r := enviarRequisicao(*addrPeer2, sensorID, "SUL", ocorrencias[idx], prios[idx])
+			r := enviarRequisicao(*addrPeer1, sensorID, "NORTE", ocorrencias[idx], prios[idx])
+			_ = enviarRequisicao(*addrPeer2, sensorID, "SUL", ocorrencias[idx], prios[idx])
+			_ = enviarRequisicao(*addrPeer3, sensorID, "LESTE", ocorrencias[idx], prios[idx])
+
 			mu.Lock()
 			defer mu.Unlock()
 			if r.Erro != nil {
@@ -323,14 +328,10 @@ func teste4Carga() {
 	} else {
 		fail(fmt.Sprintf("%d/10 requisições enviadas", enviadas))
 	}
-	aviso("Observe os logs do peer2:")
-	fmt.Printf("  %sdocker compose logs -f peer2%s\n", Ciano, Reset)
-	info("Procure por: [DEBUG-FILA] com fila crescendo, depois Disparando por prioridade")
-	info("As 2 prioridade=5 devem ser despachadas antes das prioridade=0")
 }
 
 func teste5Empate() {
-	titulo("TESTE 5 — Desempate: 3 requisições com mesma prioridade em peers diferentes")
+	titulo("TESTE 5 — Desempate: 3 requisições com mesma prioridade")
 	info("Enviando prioridade=2 para NORTE, SUL e LESTE com intervalo de 500ms")
 	info("Esperado: atendidas na ordem de chegada (timestamp mais antigo vence)")
 	separador()
@@ -338,9 +339,9 @@ func teste5Empate() {
 	empate := []struct {
 		addr, zona, sensor, ocorrencia string
 	}{
-		{*addrPeer1, "NORTE", "sensor-empate-1", "embarcacao_deriva"},
+		{*addrPeer2, "SUL", "sensor-empate-1", "embarcacao_deriva"},
 		{*addrPeer2, "SUL", "sensor-empate-2", "falha_sinalizacao"},
-		{*addrPeer3, "LESTE", "sensor-empate-3", "objeto_nao_identificado"},
+		{*addrPeer2, "SUL", "sensor-empate-3", "objeto_nao_identificado"},
 	}
 
 	for i, e := range empate {
@@ -348,17 +349,14 @@ func teste5Empate() {
 		if r.Erro != nil {
 			fail(fmt.Sprintf("%s — ERRO: %v", e.sensor, r.Erro))
 		} else {
-			ok(fmt.Sprintf("#%d enviado às %s%s%s — Zona %s (prioridade=2)",
-				i+1, Negrito, r.EnviadoEm.Format("15:04:05.000"), Reset, e.zona))
+			ok(fmt.Sprintf("#%d enviado às %s%s%s — Zona %s (prioridade=2) - %s ", 
+				i+1, Negrito, r.EnviadoEm.Format("15:04:05.000"), Reset, e.zona, e.ocorrencia))
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 
 	separador()
 	aviso("Observe os logs dos 3 peers:")
-	fmt.Printf("  %sdocker compose logs -f peer1%s\n", Ciano, Reset)
-	fmt.Printf("  %sdocker compose logs -f peer2%s\n", Ciano, Reset)
-	fmt.Printf("  %sdocker compose logs -f peer3%s\n", Ciano, Reset)
 	info("O Ricart usa timestamp como desempate — a requisição mais antiga deve ganhar o quorum primeiro")
 }
 

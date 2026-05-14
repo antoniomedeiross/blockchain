@@ -42,13 +42,15 @@ func (r *Ricart) IniciarRequisicao(droneID string, req models.Requisicao) {
 	r.Mu.Lock()
 	defer r.Mu.Unlock()
 
+	// Se já estou querendo ou usando um drone, não inicio outra requisição
 	if r.Estado == models.EstadoQuerendo || r.Estado == models.EstadoNaSecao {
 		log.Printf("[RICART] ⚠ Ignorado: já existe requisição em andamento para %s\n", r.DroneAlvo)
 		return
 	}
 
-	r.RequisicaoAtual = &req // ← só salva se vai de fato iniciar
+	r.RequisicaoAtual = &req // só salva se vai de fato iniciar
 
+	// Atualiza relógio de Lamport e dados da requisição
 	r.RelogioLamport++
 	r.TimestampRequisicao = r.RelogioLamport
 	r.PrioridadeRequisicao = req.Prioridade
@@ -59,6 +61,7 @@ func (r *Ricart) IniciarRequisicao(droneID string, req models.Requisicao) {
 	r.FilaAdiados = []string{}
 	r.Abortando = false
 
+	// Inicializa o mapa de quem está respondendo, esperar resposta de todos os peers ATIVOS no momento do REQUEST
 	r.EsperandoResposta = make(map[string]bool)
 	for _, peer := range r.PeersAtivos() {
 		r.EsperandoResposta[peer] = true
@@ -67,6 +70,7 @@ func (r *Ricart) IniciarRequisicao(droneID string, req models.Requisicao) {
 	log.Printf("[RICART] ── Iniciando REQUEST ── drone=%s ts=%d prior=%d aguardando=%d peers: %v\n",
 		droneID, r.RelogioLamport, req.Prioridade, len(r.EsperandoResposta), r.PeersAtivos())
 
+	// monta mensagem de REQUEST para todos os peers
 	msg := models.Mensagem{
 		Tipo: "REQUEST",
 		De:   r.ZonaID,
@@ -81,11 +85,13 @@ func (r *Ricart) IniciarRequisicao(droneID string, req models.Requisicao) {
 	}
 	r.EnviarParaTodos(msg)
 
+	// Se não tem peers online, já aloca imediatamente. Caso contrário, o watchdog vai garantir que mesmo se algum peer falhar, a requisição não fique travada para sempre.
 	if r.RespostasRecebidas >= r.TotalPeers() && !r.Abortando {
 		r.Estado = models.EstadoNaSecao
 		log.Printf("[RICART] ✔ QUORUM IMEDIATO (zero peers online) → alocando drone %s\n", droneID)
 		go r.AoAlocar(droneID)
 	} else {
+		// Inicia watchdog para garantir que se algum peer falhar, a requisição não fique travada para sempre
 		go r.watchdog(droneID, r.TimestampRequisicao, 15*time.Second)
 	}
 }

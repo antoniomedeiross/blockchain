@@ -23,10 +23,14 @@ func ProcessarConexoes(conn net.Conn) {
 
 	for {
 		msg, err := leitor.ReadString('\n')
+
+		// Se der erro lendo, pode ser que o peer tenha caído ou que seja um sensor desconectando (normal) — trata ambos os casos
 		if err != nil {
 			if peerZona != "" {
 				log.Printf("[P2P] ✗ Peer %s desconectado\n", peerZona)
 				repo.Mutex.Lock()
+
+				// Se ta na lista de peers, marca como offline (mas não remove pra tentar reconectar depois)
 				if peer, exists := repo.Peers[peerZona]; exists {
 					peer.Alive = false
 					repo.Peers[peerZona] = peer
@@ -46,7 +50,7 @@ func ProcessarConexoes(conn net.Conn) {
 			continue
 		}
 
-		// Protocolo: primeira mensagem deve ser identificação (IAM:ZONA)
+		// Protocolo: primeira mensagem deve ser identificação (IAM:ZONA/SENSOR/DRONE)
 		if strings.HasPrefix(msg, "IAM:") {
 			partes := strings.SplitN(strings.TrimPrefix(msg, "IAM:"), ":", 3)
 
@@ -65,9 +69,11 @@ func ProcessarConexoes(conn net.Conn) {
 				droneID := partes[1]
 				log.Printf("[DRONE] ✔ Drone conectado: %s\n", droneID)
 
+				// Registra conexão do drone para poder enviar missões depois
 				repo.RegistrarConexaoDrone(droneID, conn)
 
 				repo.DroneMutex.Lock()
+				// Verifica se o drone já existe e tem uma zona base registrada
 				droneExistente, jaConhecido := repo.Drones[droneID]
 				if jaConhecido && droneExistente.ZonaBase != "" {
 					// Drone reconectando (failover): preserva ZonaBase original, atualiza ZonaAtual
@@ -89,6 +95,7 @@ func ProcessarConexoes(conn net.Conn) {
 				}
 				repo.DroneMutex.Unlock()
 
+				// Notifica todos os peers sobre o novo drone ou a reconexão
 				repo.BroadcastFn(repo.Drones[droneID])
 				conn.Write([]byte("OK\n"))
 
@@ -97,8 +104,9 @@ func ProcessarConexoes(conn net.Conn) {
 					repo.TentarAlocarDaFila()
 				}()
 
-				// Bloqueia aqui até o drone desconectar — NÃO usa goroutine
+				// Bloqueia aqui até o drone desconectar  
 				processarDrone(droneID, conn, leitor)
+
 				return // só sai depois que o drone cair
 			}
 
@@ -372,16 +380,22 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 			continue
 		}
 
+	
+		// Processar tipos de mensagem do drone
 		switch mensagem.Tipo {
+		// Quando o drone conclui a missão, precisamos atualizar o estado local, notificar os peers e liberar o Ricart
 		case "MISSAO_CONCLUIDA":
 			log.Printf("[DRONE] ✔ Drone %s concluiu missão — liberando\n", droneID)
+			// Atualiza estado localmente
 			repo.RemoverGerenciamento(droneID)
 
 			repo.DroneMutex.Lock()
+			// Verifica se o drone é da própria zona ou de failover (reconectou aqui, mas a base é outra)
 			d := repo.Drones[droneID]
 			d.Status = models.StatusLivre
 			d.MissaoAtual = nil
 
+			// Se o drone é de failover, ele vai estar conectado aqui, mas a zona base é outra. Nesse caso, não atualizamos ZonaAtual
 			minhaZona := getZonaAtual()
 			droneELocal := d.ZonaBase == minhaZona
 			zonaBase := d.ZonaBase
@@ -393,6 +407,7 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 				// Drone em failover: continua na zona atual (está conectado fisicamente aqui)
 				d.ZonaAtual = minhaZona
 			}
+			// Atualiza o mapa de drones
 			repo.Drones[droneID] = d
 			repo.DroneMutex.Unlock()
 
@@ -415,6 +430,8 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 				repo.TentarAlocarDaFila()
 			}()
 
+
+		// quando conecta o drone pede a lista de peers para saber para onde ir quando cair
 		case "GET_PEERS_LIST":
 			repo.Mutex.RLock()
 			var lista []string
