@@ -42,3 +42,11 @@ docker run -e PEER_NORTE="10.65.139.176:8080" -e PEER_SUL="10.65.139.176:8081" -
 
 TESTE 
 go run test/main.go -peer1=localhost:9090 -peer2=localhost:9091 -peer3=localhost:9092 
+
+docker run -it --rm \
+  -e PEER1=peer1:9090 \
+  -e PEER2=peer2:9091 \
+  -e PEER3=peer3:9092 \
+  tonito12/test-zonas:v1
+
+  

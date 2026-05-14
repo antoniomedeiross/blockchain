@@ -9,7 +9,6 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -74,13 +73,21 @@ func separador() {
 	fmt.Printf("  %s%s──────────────────────────────────────────────────%s\n", Ciano, Negrito, Reset)
 }
 
-// ── Flags ─────────────────────────────────────────────────────────────────────
+// ── Variáveis de ambiente ──────────────────────────────────────────────────────
 
 var (
-	addrPeer1 = flag.String("peer1", "localhost:9090", "endereço TCP do peer1 (NORTE)")
-	addrPeer2 = flag.String("peer2", "localhost:9091", "endereço TCP do peer2 (SUL)")
-	addrPeer3 = flag.String("peer3", "localhost:9092", "endereço TCP do peer3 (LESTE)")
+addrPeer1 string
+	addrPeer2 string
+	addrPeer3 string
 )
+
+func carregarEnv(nome, padrao string) string {
+	valor := os.Getenv(nome)
+	if valor == "" {
+		return padrao
+	}
+	return valor
+}
 
 // ── Comunicação TCP ───────────────────────────────────────────────────────────
 
@@ -142,9 +149,9 @@ func peerAcessivel(addr string) bool {
 func verificarPeers() bool {
 	titulo("Verificando conectividade com os peers")
 	peers := []struct{ zona, addr string }{
-		{"NORTE (peer1)", *addrPeer1},
-		{"SUL   (peer2)", *addrPeer2},
-		{"LESTE (peer3)", *addrPeer3},
+		{"NORTE (peer1)", addrPeer1},
+		{"SUL   (peer2)", addrPeer2},
+		{"LESTE (peer3)", addrPeer3},
 	}
 	todos := true
 	for _, p := range peers {
@@ -182,7 +189,7 @@ func teste1Prioridade() {
 
 	for i, c := range casos {
 		sensorID := fmt.Sprintf("sensor-prio-%d", i+1)
-		r := enviarRequisicao(*addrPeer1, sensorID, "NORTE", c.ocorrencia, c.prioridade)
+		r := enviarRequisicao(addrPeer1, sensorID, "NORTE", c.ocorrencia, c.prioridade)
 		if r.Erro != nil {
 			fail(fmt.Sprintf("prioridade=%d — ERRO: %v", c.prioridade, r.Erro))
 		} else {
@@ -209,8 +216,8 @@ func teste2Simultaneo() {
 		prioridade                     int
 	}
 	simult := []cfg{
-		{*addrPeer1, "NORTE", "sensor-simult-norte", "objeto_nao_identificado", 3},
-		{*addrPeer2, "SUL", "sensor-simult-sul", "embarcacao_deriva", 3},
+		{addrPeer1, "NORTE", "sensor-simult-norte", "objeto_nao_identificado", 3},
+		{addrPeer2, "SUL", "sensor-simult-sul", "embarcacao_deriva", 3},
 	}
 
 	var wg sync.WaitGroup
@@ -249,14 +256,14 @@ func teste3Distribuicao() {
 		prioridade                     int
 	}
 	zonas := []cfg{
-		{*addrPeer1, "NORTE", "sensor-dist-norte", "replanejamento_risco_ambiental", 5},
-		{*addrPeer1, "NORTE", "sensor-dist-norte", "replanejamento_risco_ambiental", 2},
+		{addrPeer1, "NORTE", "sensor-dist-norte", "replanejamento_risco_ambiental", 5},
+		{addrPeer1, "NORTE", "sensor-dist-norte", "replanejamento_risco_ambiental", 2},
 
-		{*addrPeer2, "SUL", "sensor-dist-sul", "falha_sinalizacao", 4},
-		{*addrPeer2, "SUL", "sensor-dist-sul", "replanejamento_risco_ambiental", 2},
+		{addrPeer2, "SUL", "sensor-dist-sul", "falha_sinalizacao", 4},
+		{addrPeer2, "SUL", "sensor-dist-sul", "replanejamento_risco_ambiental", 2},
 
-		{*addrPeer3, "LESTE", "sensor-dist-leste", "inspecao_visual_urgente", 2},
-		{*addrPeer3, "LESTE", "sensor-dist-leste", "replanejamento_risco_ambiental", 1},
+		{addrPeer3, "LESTE", "sensor-dist-leste", "inspecao_visual_urgente", 2},
+		{addrPeer3, "LESTE", "sensor-dist-leste", "replanejamento_risco_ambiental", 1},
 
 	}
 
@@ -304,9 +311,9 @@ func teste4Carga() {
 		go func(idx int) {
 			defer wg.Done()
 			sensorID := fmt.Sprintf("sensor-carga-%02d", idx+1)
-			r := enviarRequisicao(*addrPeer1, sensorID, "NORTE", ocorrencias[idx], prios[idx])
-			_ = enviarRequisicao(*addrPeer2, sensorID, "SUL", ocorrencias[idx], prios[idx])
-			_ = enviarRequisicao(*addrPeer3, sensorID, "LESTE", ocorrencias[idx], prios[idx])
+			r := enviarRequisicao(addrPeer1, sensorID, "NORTE", ocorrencias[idx], prios[idx])
+			_ = enviarRequisicao(addrPeer2, sensorID, "SUL", ocorrencias[idx], prios[idx])
+			_ = enviarRequisicao(addrPeer3, sensorID, "LESTE", ocorrencias[idx], prios[idx])
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -339,9 +346,9 @@ func teste5Empate() {
 	empate := []struct {
 		addr, zona, sensor, ocorrencia string
 	}{
-		{*addrPeer2, "SUL", "sensor-empate-1", "embarcacao_deriva"},
-		{*addrPeer2, "SUL", "sensor-empate-2", "falha_sinalizacao"},
-		{*addrPeer2, "SUL", "sensor-empate-3", "objeto_nao_identificado"},
+		{addrPeer2, "SUL", "sensor-empate-1", "embarcacao_deriva"},
+		{addrPeer2, "SUL", "sensor-empate-2", "falha_sinalizacao"},
+		{addrPeer2, "SUL", "sensor-empate-3", "objeto_nao_identificado"},
 	}
 
 	for i, e := range empate {
@@ -375,7 +382,7 @@ func exibirMenu() {
 	fmt.Printf("%s%s║%s  %s0%s  Sair                                           %s║%s\n", Negrito, Azul, Reset, Negrito, Reset, Azul+Negrito, Reset)
 	fmt.Printf("%s%s╚══════════════════════════════════════════════════╝%s\n", Negrito, Azul, Reset)
 	fmt.Printf("\n  %sPeers:%s peer1=%s | peer2=%s | peer3=%s\n",
-		Magenta, Reset, *addrPeer1, *addrPeer2, *addrPeer3)
+		Magenta, Reset,addrPeer1, addrPeer2, addrPeer3)
 	fmt.Printf("\n  %sEscolha um teste:%s ", Negrito, Reset)
 }
 
@@ -387,7 +394,9 @@ func aguardarEnter() {
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 
 func main() {
-	flag.Parse()
+addrPeer1 = carregarEnv("PEER1", "localhost:9090")
+addrPeer2 = carregarEnv("PEER2", "localhost:9091")
+addrPeer3 = carregarEnv("PEER3", "localhost:9092")
 
 	if !verificarPeers() {
 		return
