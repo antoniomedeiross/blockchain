@@ -37,3 +37,8 @@ docker run -e SENSOR_ID="sensor-leste-1" -e ZONA="LESTE" -e SERVIDOR="10.65.139.
 
 INTERFACE 
 docker run -e PEER_NORTE="10.65.139.176:8080" -e PEER_SUL="10.65.139.176:8081" -e PEER_LESTE="10.65.139.176:8082" -p 3000:80 tonito12/interface:v1
+
+
+
+TESTE 
+go run test/main.go -peer1=localhost:9090 -peer2=localhost:9091 -peer3=localhost:9092 
