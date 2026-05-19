@@ -10,8 +10,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -42,20 +44,129 @@ type ResultadoReq struct {
 	Ocorrencia string
 	Prioridade int
 	EnviadoEm  time.Time
+	Latencia   time.Duration
 	Erro       error
+}
+
+// ── Métricas ─────────────────────────────────────────────────────────────────
+
+type Metricas struct {
+	mu        sync.Mutex
+	latencias []time.Duration
+	erros     int
+	inicio    time.Time
+}
+
+func NovasMetricas() *Metricas {
+	return &Metricas{inicio: time.Now()}
+}
+
+func (m *Metricas) Registrar(r ResultadoReq) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if r.Erro != nil {
+		m.erros++
+		return
+	}
+	m.latencias = append(m.latencias, r.Latencia)
+}
+
+func (m *Metricas) Relatorio(tit string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	duracao := time.Since(m.inicio)
+	sucessos := len(m.latencias)
+	total := sucessos + m.erros
+
+	fmt.Printf("\n%s%s┌─────────────────────────────────────────────────────┐%s\n", Negrito, Ciano, Reset)
+	fmt.Printf("%s%s│%s  📊 MÉTRICAS — %-37s%s%s│%s\n", Negrito, Ciano, Reset, tit, Negrito, Ciano, Reset)
+	fmt.Printf("%s%s├─────────────────────────────────────────────────────┤%s\n", Negrito, Ciano, Reset)
+	fmt.Printf("%s%s│%s  %-28s %s%-22s%s%s│%s\n", Negrito, Ciano, Reset, "Duração total:", Negrito, duracao.Round(time.Millisecond), Reset, Ciano, Reset)
+	fmt.Printf("%s%s│%s  %-28s %s%-22s%s%s│%s\n", Negrito, Ciano, Reset, "Requisições enviadas:", Negrito,
+		fmt.Sprintf("%d / %d  erros: %d", sucessos, total, m.erros), Reset, Ciano, Reset)
+
+	throughput := 0.0
+	if duracao.Seconds() > 0 {
+		throughput = float64(sucessos) / duracao.Seconds()
+	}
+	fmt.Printf("%s%s│%s  %-28s %s%-22s%s%s│%s\n", Negrito, Ciano, Reset, "Throughput:", Negrito,
+		fmt.Sprintf("%.2f req/s", throughput), Reset, Ciano, Reset)
+
+	if sucessos == 0 {
+		fmt.Printf("%s%s│%s  (nenhuma requisição bem-sucedida)                   %s%s│%s\n", Negrito, Ciano, Reset, Ciano, Negrito, Reset)
+		fmt.Printf("%s%s└─────────────────────────────────────────────────────┘%s\n\n", Negrito, Ciano, Reset)
+		return
+	}
+
+	sort.Slice(m.latencias, func(i, j int) bool { return m.latencias[i] < m.latencias[j] })
+	minL := m.latencias[0]
+	maxL := m.latencias[sucessos-1]
+	p50 := m.latencias[int(float64(sucessos)*0.50)]
+	p90 := m.latencias[int(math.Min(float64(sucessos-1), float64(sucessos)*0.90))]
+	p99 := m.latencias[int(math.Min(float64(sucessos-1), float64(sucessos)*0.99))]
+	var soma time.Duration
+	for _, l := range m.latencias {
+		soma += l
+	}
+	media := soma / time.Duration(sucessos)
+
+	fmt.Printf("%s%s├─────────────────────────────────────────────────────┤%s\n", Negrito, Ciano, Reset)
+	fmt.Printf("%s%s│%s  %-28s %s%-22s%s%s│%s\n", Negrito, Ciano, Reset, "Latência mín:", Negrito, minL.Round(time.Microsecond), Reset, Ciano, Reset)
+	fmt.Printf("%s%s│%s  %-28s %s%-22s%s%s│%s\n", Negrito, Ciano, Reset, "Latência média:", Negrito, media.Round(time.Microsecond), Reset, Ciano, Reset)
+	fmt.Printf("%s%s│%s  %-28s %s%-22s%s%s│%s\n", Negrito, Ciano, Reset, "Latência máx:", Negrito, maxL.Round(time.Microsecond), Reset, Ciano, Reset)
+	fmt.Printf("%s%s│%s  %-28s %s%-22s%s%s│%s\n", Negrito, Ciano, Reset, "p50 (mediana):", Negrito, p50.Round(time.Microsecond), Reset, Ciano, Reset)
+	fmt.Printf("%s%s│%s  %-28s %s%-22s%s%s│%s\n", Negrito, Ciano, Reset, "p90:", Negrito, p90.Round(time.Microsecond), Reset, Ciano, Reset)
+	fmt.Printf("%s%s│%s  %-28s %s%-22s%s%s│%s\n", Negrito, Ciano, Reset, "p99:", Negrito, p99.Round(time.Microsecond), Reset, Ciano, Reset)
+
+	// Histograma
+	fmt.Printf("%s%s├─────────────────────────────────────────────────────┤%s\n", Negrito, Ciano, Reset)
+	fmt.Printf("%s%s│%s  Histograma de latência:                            %s%s│%s\n", Negrito, Ciano, Reset, Ciano, Negrito, Reset)
+	buckets := []struct {
+		label string
+		max   time.Duration
+	}{
+		{"< 1ms  ", 1 * time.Millisecond},
+		{"1–5ms  ", 5 * time.Millisecond},
+		{"5–20ms ", 20 * time.Millisecond},
+		{"20–50ms", 50 * time.Millisecond},
+		{"> 50ms ", time.Duration(math.MaxInt64)},
+	}
+	contagens := make([]int, len(buckets))
+	for _, l := range m.latencias {
+		for i, b := range buckets {
+			if l < b.max {
+				contagens[i]++
+				break
+			}
+		}
+	}
+	barMax := 20
+	for i, b := range buckets {
+		barLen := 0
+		if sucessos > 0 {
+			barLen = int(float64(contagens[i]) / float64(sucessos) * float64(barMax))
+		}
+		bar := strings.Repeat("█", barLen) + strings.Repeat("░", barMax-barLen)
+		fmt.Printf("%s%s│%s  %s %s%s%s %3d req              %s%s│%s\n",
+			Negrito, Ciano, Reset,
+			b.label, Verde, bar, Reset,
+			contagens[i], Ciano, Negrito, Reset)
+	}
+	fmt.Printf("%s%s└─────────────────────────────────────────────────────┘%s\n\n", Negrito, Ciano, Reset)
 }
 
 // ── Cores ─────────────────────────────────────────────────────────────────────
 
 const (
-	Verde   = "\033[0;32m"
+	Verde    = "\033[0;32m"
 	Vermelho = "\033[0;31m"
-	Amarelo = "\033[1;33m"
-	Azul    = "\033[0;34m"
-	Ciano   = "\033[0;36m"
-	Magenta = "\033[0;35m"
-	Negrito = "\033[1m"
-	Reset   = "\033[0m"
+	Amarelo  = "\033[1;33m"
+	Azul     = "\033[0;34m"
+	Ciano    = "\033[0;36m"
+	Magenta  = "\033[0;35m"
+	Negrito  = "\033[1m"
+	Reset    = "\033[0m"
 )
 
 func ok(msg string)    { fmt.Printf("  %s✓%s %s\n", Verde, Reset, msg) }
@@ -76,7 +187,7 @@ func separador() {
 // ── Variáveis de ambiente ──────────────────────────────────────────────────────
 
 var (
-addrPeer1 string
+	addrPeer1 string
 	addrPeer2 string
 	addrPeer3 string
 )
@@ -99,6 +210,8 @@ func enviarRequisicao(peerAddr, sensorID, zona, ocorrencia string, prioridade in
 		Prioridade: prioridade,
 		EnviadoEm:  time.Now(),
 	}
+
+	inicio := time.Now()
 
 	conn, err := net.DialTimeout("tcp", peerAddr, 5*time.Second)
 	if err != nil {
@@ -132,6 +245,8 @@ func enviarRequisicao(peerAddr, sensorID, zona, ocorrencia string, prioridade in
 	}
 	data, _ := json.Marshal(msg)
 	conn.Write(append(data, '\n'))
+
+	res.Latencia = time.Since(inicio)
 	return res
 }
 
@@ -187,17 +302,22 @@ func teste1Prioridade() {
 		{"inspecao_visual_urgente", 4},
 	}
 
+	met := NovasMetricas()
 	for i, c := range casos {
 		sensorID := fmt.Sprintf("sensor-prio-%d", i+1)
 		r := enviarRequisicao(addrPeer1, sensorID, "NORTE", c.ocorrencia, c.prioridade)
+		met.Registrar(r)
 		if r.Erro != nil {
 			fail(fmt.Sprintf("prioridade=%d — ERRO: %v", c.prioridade, r.Erro))
 		} else {
-			ok(fmt.Sprintf("Enfileirado: %sprioridade=%d%s — %s", Negrito, c.prioridade, Reset, c.ocorrencia))
+			ok(fmt.Sprintf("Enfileirado: %sprioridade=%d%s — %s  %s[latência: %s]%s",
+				Negrito, c.prioridade, Reset, c.ocorrencia,
+				Ciano, r.Latencia.Round(time.Microsecond), Reset))
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 
+	met.Relatorio("Prioridade")
 	separador()
 	aviso("Observe os logs do peer1:")
 	fmt.Printf("  %sdocker compose logs -f peer1%s\n", Ciano, Reset)
@@ -220,22 +340,26 @@ func teste2Simultaneo() {
 		{addrPeer2, "SUL", "sensor-simult-sul", "embarcacao_deriva", 3},
 	}
 
+	met := NovasMetricas()
 	var wg sync.WaitGroup
 	for _, s := range simult {
 		wg.Add(1)
 		go func(c cfg) {
 			defer wg.Done()
 			r := enviarRequisicao(c.addr, c.sensor, c.zona, c.ocorrencia, c.prioridade)
+			met.Registrar(r)
 			if r.Erro != nil {
 				fail(fmt.Sprintf("%s — ERRO: %v", c.sensor, r.Erro))
 			} else {
-				ok(fmt.Sprintf("%s enviou às %s%s%s (prioridade=%d)",
-					c.sensor, Negrito, r.EnviadoEm.Format("15:04:05.000"), Reset, c.prioridade))
+				ok(fmt.Sprintf("%s enviou às %s%s%s (prioridade=%d)  %s[latência: %s]%s",
+					c.sensor, Negrito, r.EnviadoEm.Format("15:04:05.000"), Reset, c.prioridade,
+					Ciano, r.Latencia.Round(time.Microsecond), Reset))
 			}
 		}(s)
 	}
 	wg.Wait()
 
+	met.Relatorio("Exclusão Mútua")
 	separador()
 	aviso("Observe os logs dos dois peers:")
 	fmt.Printf("  %sdocker compose logs -f peer1%s\n", Ciano, Reset)
@@ -264,9 +388,9 @@ func teste3Distribuicao() {
 
 		{addrPeer3, "LESTE", "sensor-dist-leste", "inspecao_visual_urgente", 2},
 		{addrPeer3, "LESTE", "sensor-dist-leste", "replanejamento_risco_ambiental", 1},
-
 	}
 
+	met := NovasMetricas()
 	var wg sync.WaitGroup
 	for i, z := range zonas {
 		wg.Add(1)
@@ -274,16 +398,19 @@ func teste3Distribuicao() {
 			defer wg.Done()
 			time.Sleep(time.Duration(idx*50) * time.Millisecond)
 			r := enviarRequisicao(c.addr, c.sensor, c.zona, c.ocorrencia, c.prioridade)
+			met.Registrar(r)
 			if r.Erro != nil {
 				fail(fmt.Sprintf("Zona %s — ERRO: %v", c.zona, r.Erro))
 			} else {
-				ok(fmt.Sprintf("Zona %s%s%s — prioridade=%d (%s)",
-					Negrito, c.zona, Reset, c.prioridade, c.ocorrencia))
+				ok(fmt.Sprintf("Zona %s%s%s — prioridade=%d (%s)  %s[latência: %s]%s",
+					Negrito, c.zona, Reset, c.prioridade, c.ocorrencia,
+					Ciano, r.Latencia.Round(time.Microsecond), Reset))
 			}
 		}(i, z)
 	}
 	wg.Wait()
 
+	met.Relatorio("Distribuição entre Zonas")
 	separador()
 }
 
@@ -301,6 +428,7 @@ func teste4Carga() {
 		"falha_sinalizacao",
 	}
 
+	met := NovasMetricas()
 	var (
 		wg       sync.WaitGroup
 		mu       sync.Mutex
@@ -314,14 +442,15 @@ func teste4Carga() {
 			r := enviarRequisicao(addrPeer1, sensorID, "NORTE", ocorrencias[idx], prios[idx])
 			_ = enviarRequisicao(addrPeer2, sensorID, "SUL", ocorrencias[idx], prios[idx])
 			_ = enviarRequisicao(addrPeer3, sensorID, "LESTE", ocorrencias[idx], prios[idx])
-
+			met.Registrar(r)
 			mu.Lock()
 			defer mu.Unlock()
 			if r.Erro != nil {
 				fail(fmt.Sprintf("sensor-carga-%02d — ERRO: %v", idx+1, r.Erro))
 			} else {
-				fmt.Printf("  %s[%02d]%s prioridade=%s%d%s — %s\n",
-					Ciano, idx+1, Reset, Negrito, prios[idx], Reset, ocorrencias[idx])
+				fmt.Printf("  %s[%02d]%s prioridade=%s%d%s — %s  %s[latência: %s]%s\n",
+					Ciano, idx+1, Reset, Negrito, prios[idx], Reset, ocorrencias[idx],
+					Ciano, r.Latencia.Round(time.Microsecond), Reset)
 				enviadas++
 			}
 		}(i)
@@ -335,6 +464,7 @@ func teste4Carga() {
 	} else {
 		fail(fmt.Sprintf("%d/10 requisições enviadas", enviadas))
 	}
+	met.Relatorio("Carga (10 req em rajada — 3 peers)")
 }
 
 func teste5Empate() {
@@ -351,17 +481,21 @@ func teste5Empate() {
 		{addrPeer2, "SUL", "sensor-empate-3", "objeto_nao_identificado"},
 	}
 
+	met := NovasMetricas()
 	for i, e := range empate {
 		r := enviarRequisicao(e.addr, e.sensor, e.zona, e.ocorrencia, 2)
+		met.Registrar(r)
 		if r.Erro != nil {
 			fail(fmt.Sprintf("%s — ERRO: %v", e.sensor, r.Erro))
 		} else {
-			ok(fmt.Sprintf("#%d enviado às %s%s%s — Zona %s (prioridade=2) - %s ", 
-				i+1, Negrito, r.EnviadoEm.Format("15:04:05.000"), Reset, e.zona, e.ocorrencia))
+			ok(fmt.Sprintf("#%d enviado às %s%s%s — Zona %s (prioridade=2) - %s  %s[latência: %s]%s",
+				i+1, Negrito, r.EnviadoEm.Format("15:04:05.000"), Reset, e.zona, e.ocorrencia,
+				Ciano, r.Latencia.Round(time.Microsecond), Reset))
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 
+	met.Relatorio("Desempate por Timestamp")
 	separador()
 	aviso("Observe os logs dos 3 peers:")
 	info("O Ricart usa timestamp como desempate — a requisição mais antiga deve ganhar o quorum primeiro")
@@ -382,7 +516,7 @@ func exibirMenu() {
 	fmt.Printf("%s%s║%s  %s0%s  Sair                                           %s║%s\n", Negrito, Azul, Reset, Negrito, Reset, Azul+Negrito, Reset)
 	fmt.Printf("%s%s╚══════════════════════════════════════════════════╝%s\n", Negrito, Azul, Reset)
 	fmt.Printf("\n  %sPeers:%s peer1=%s | peer2=%s | peer3=%s\n",
-		Magenta, Reset,addrPeer1, addrPeer2, addrPeer3)
+		Magenta, Reset, addrPeer1, addrPeer2, addrPeer3)
 	fmt.Printf("\n  %sEscolha um teste:%s ", Negrito, Reset)
 }
 
@@ -394,9 +528,9 @@ func aguardarEnter() {
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 
 func main() {
-addrPeer1 = carregarEnv("PEER1", "localhost:9090")
-addrPeer2 = carregarEnv("PEER2", "localhost:9091")
-addrPeer3 = carregarEnv("PEER3", "localhost:9092")
+	addrPeer1 = carregarEnv("PEER1", "localhost:9090")
+	addrPeer2 = carregarEnv("PEER2", "localhost:9091")
+	addrPeer3 = carregarEnv("PEER3", "localhost:9092")
 
 	if !verificarPeers() {
 		return

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard — Sistema de Drones</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0e1a;
+    color: #e0e6f0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 1.4rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #7eb8f7;
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #4a5568;
+    margin-bottom: 28px;
+    letter-spacing: 1px;
+  }
+
+  /* ── GRID DE ZONAS (AGORA DINÂMICO) ── */
+  .zonas {
+    display: grid;
+    /* O JS vai sobrescrever isso se houver muitos peers, mas o padrão é flexível */
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto 28px;
+  }
+
+  .zona {
+    background: #111827;
+    border: 1px solid #1e2a3a;
+    border-radius: 12px;
+    padding: 20px;
+    transition: border-color 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .zona::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    border-radius: 12px 12px 0 0;
+    background: #3b82f6; /* Cor padrão */
+  }
+
+  /* Cores baseadas no nome da zona (opcional) */
+  .zona.SUL::before   { background: #10b981; }
+  .zona.LESTE::before { background: #f59e0b; }
+
+  .zona.offline { opacity: 0.45; border-color: #374151; }
+
+  .zona-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .zona-nome {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #60a5fa;
+  }
+
+  .ricart-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    text-transform: uppercase;
+  }
+  .ricart-LIVRE    { background: #064e3b; color: #34d399; }
+  .ricart-QUERENDO { background: #78350f; color: #fbbf24; }
+  .ricart-NA_SECAO { background: #1e1b4b; color: #818cf8; }
+
+  /* ── DRONES ── */
+  .secao-titulo {
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #4a5568;
+    margin-bottom: 10px;
+    margin-top: 16px;
+  }
+
+  .drones-lista { display: flex; flex-direction: column; gap: 8px; }
+
+  .drone-card {
+    background: #1a2236;
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid transparent;
+  }
+  .drone-card.livre    { border-color: #064e3b; }
+  .drone-card.ocupado  { border-color: #7c3aed; background: #1e1540; }
+  .drone-card.offline  { border-color: #374151; opacity: 0.5; }
+  .drone-card.visitante { border-color: #b45309; background: #1c1508; }
+
+  .drone-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .livre   .drone-dot { background: #34d399; box-shadow: 0 0 6px #34d399; }
+  .ocupado .drone-dot { background: #818cf8; box-shadow: 0 0 6px #818cf8; animation: pulse 1.5s infinite; }
+  .offline .drone-dot { background: #6b7280; }
+  .visitante .drone-dot { background: #fbbf24; box-shadow: 0 0 6px #fbbf24; }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .drone-info { flex: 1; min-width: 0; }
+  .drone-id { font-size: 0.8rem; font-weight: 600; color: #cbd5e1; }
+  .drone-meta { font-size: 0.7rem; color: #64748b; }
+  .drone-missao { font-size: 0.68rem; color: #a78bfa; margin-top: 3px; }
+
+  .drone-status-badge {
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 20px;
+    text-transform: uppercase;
+  }
+  .livre   .drone-status-badge { background: #064e3b; color: #34d399; }
+  .ocupado .drone-status-badge { background: #2e1065; color: #c4b5fd; }
+  .offline .drone-status-badge { background: #1f2937; color: #6b7280; }
+  .visitante .drone-status-badge { background: #451a03; color: #fcd34d; }
+
+  /* ── FILA ── */
+  .fila-lista { display: flex; flex-direction: column; gap: 5px; }
+  .req-item {
+    display: flex; align-items: center; gap: 8px;
+    background: #1a2236; border-radius: 6px; padding: 7px 10px; font-size: 0.72rem;
+  }
+  .prio-bar { width: 4px; border-radius: 2px; align-self: stretch; }
+
+  .zona-stats {
+    display: flex; gap: 12px; margin-top: 16px; padding-top: 14px;
+    border-top: 1px solid #1e2a3a;
+  }
+  .stat { flex: 1; text-align: center; }
+  .stat-val { font-size: 1.4rem; font-weight: 700; color: #60a5fa; }
+  .stat-label { font-size: 0.6rem; color: #4a5568; text-transform: uppercase; }
+
+  .status-bar {
+    max-width: 1200px; margin: 0 auto;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.7rem; color: #374151;
+  }
+  .dot-online  { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #34d399; margin-right: 5px; }
+  .dot-offline { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #ef4444; margin-right: 5px; }
+
+  /* Prioridades */
+  .p5 { background: #7f1d1d; color: #fca5a5; }
+  .p4 { background: #7c2d12; color: #fdba74; }
+  .p3 { background: #713f12; color: #fde68a; }
+  .p2 { background: #14532d; color: #86efac; }
+  .p1 { background: #1e3a5f; color: #93c5fd; }
+  .p0 { background: #1f2937; color: #9ca3af; }
+</style>
+</head>
+<body>
+
+<h1>⬡ Sistema Distribuído de Drones</h1>
+<p class="subtitle">Monitoramento em tempo real — Configuração Dinâmica</p>
+
+<div class="zonas" id="zonas">
+  <!-- preenchido pelo JS -->
+</div>
+
+<div class="status-bar">
+  <span id="peers-status">Detectando Peers...</span>
+  <span class="last-update" id="last-update"></span>
+</div>
+
+<script>
+/**
+ * ESTA VARIÁVEL SERÁ SUBSTITUÍDA PELO DOCKER NO RUNTIME
+ * Exemplo de formato esperado: "NORTE=172.18.0.2:5000,SUL=172.18.0.3:5000"
+ */
+const PEERS_RAW = "__PEERS_ENV__";
+
+function parsePeers(raw) {
+  // Fallback para teste local se a string não for substituída
+  if (!raw || raw.includes("__PEERS") || raw === "") {
+    return [
+      { zona: 'LOCAL_TEST', url: 'http://localhost:5000/status' }
+    ];
+  }
+
+  return raw.split(',').map(pair => {
+    const [nome, endereco] = pair.split('=');
+    return {
+      zona: nome.trim().toUpperCase(),
+      url: endereco.includes('http') ? endereco.trim() : `http://${endereco.trim()}/status`
+    };
+  });
+}
+
+const PEERS = parsePeers(PEERS_RAW);
+
+const OCORRENCIAS = {
+  suspeita_bloqueio_rota: 'Bloqueio de Rota',
+  falha_sinalizacao: 'Falha Sinalização',
+  embarcacao_deriva: 'Embarcação à Deriva',
+  congestionamento_corredor: 'Congestionamento',
+  objeto_nao_identificado: 'Objeto Não-ID',
+  inspecao_visual_urgente: 'Inspeção Urgente',
+  replanejamento_risco_ambiental: 'Risco Ambiental',
+};
+
+function nomeOcorrencia(o) { return OCORRENCIAS[o] || o; }
+function prioClass(p) { return 'p' + Math.min(5, Math.max(0, p)); }
+function prioBarColor(p) {
+  const colors = ['#374151','#1e3a5f','#14532d','#713f12','#7c2d12','#7f1d1d'];
+  return colors[Math.min(5, Math.max(0, p))];
+}
+
+function renderZona(data, isOffline) {
+  const zona = data?.zona || '???';
+  const ricart = data?.ricart || 'LIVRE';
+  const drones = data?.drones || [];
+  const fila = data?.fila || [];
+  const gerenciados = new Set(data.drones_gerenciados || []);
+
+  const dronesExibir = drones.filter(d => true); // Ajuste conforme sua lógica de filtragem
+
+  const livres = dronesExibir.filter(d => d.status === 'livre').length;
+  const ocupados = dronesExibir.filter(d => d.status === 'ocupado').length;
+  const visitantes = dronesExibir.filter(d => d.zona_atual === zona && d.zona_base !== zona).length;
+
+  const dronesHTML = dronesExibir.length === 0
+    ? `<div style="font-size:0.7rem;color:#374151;text-align:center;padding:10px;">Sem drones</div>`
+    : dronesExibir.map(d => {
+        const visitante = d.zona_base !== zona && d.zona_atual === zona;
+        const alocadoRemoto = gerenciados.has(d.id) && d.zona_base !== zona && d.zona_atual !== zona;
+        
+        let cssClass = d.status, badge = d.status.toUpperCase(), meta = `Base: ${d.zona_base}`;
+        
+        if (visitante) { cssClass = 'visitante'; badge = 'FAILOVER'; meta = `Origem: ${d.zona_base}`; }
+        else if (alocadoRemoto) { badge = 'ALOCADO'; meta = `Em: ${d.zona_atual}`; }
+
+        return `
+          <div class="drone-card ${cssClass}">
+            <div class="drone-dot"></div>
+            <div class="drone-info">
+              <div class="drone-id">${d.id}</div>
+              <div class="drone-meta">${meta}</div>
+              ${d.missao ? `<div class="drone-missao">⬡ ${nomeOcorrencia(d.missao)}</div>` : ''}
+            </div>
+            <div class="drone-status-badge">${badge}</div>
+          </div>`;
+      }).join('');
+
+  const filaHTML = fila.length === 0
+    ? `<div style="font-size:0.7rem;color:#374151;text-align:center;">Fila vazia</div>`
+    : fila.sort((a,b) => b.prioridade - a.prioridade).map(r => `
+        <div class="req-item">
+          <div class="prio-bar" style="background:${prioBarColor(r.prioridade)}"></div>
+          <span style="flex:1">${nomeOcorrencia(r.ocorrencia)}</span>
+          <span class="prio-badge ${prioClass(r.prioridade)}">P${r.prioridade}</span>
+        </div>`).join('');
+
+  return `
+    <div class="zona ${zona} ${isOffline ? 'offline' : ''}">
+      <div class="zona-header">
+        <span class="zona-nome">${zona}</span>
+        <span class="ricart-badge ricart-${ricart}">${ricart}</span>
+      </div>
+      <div class="secao-titulo">Drones Ativos</div>
+      <div class="drones-lista">${dronesHTML}</div>
+      <div class="secao-titulo">Fila de Espera</div>
+      <div class="fila-lista">${filaHTML}</div>
+      <div class="zona-stats">
+        <div class="stat"><div class="stat-val">${livres}</div><div class="stat-label">Livres</div></div>
+        <div class="stat"><div class="stat-val">${ocupados}</div><div class="stat-label">Missão</div></div>
+        <div class="stat"><div class="stat-val">${visitantes}</div><div class="stat-label">Visitas</div></div>
+      </div>
+    </div>`;
+}
+
+async function fetchZona(peer) {
+  try {
+    const res = await fetch(peer.url, { signal: AbortSignal.timeout(1500) });
+    if (!res.ok) throw new Error();
+    return { data: await res.json(), offline: false, peer };
+  } catch {
+    return { data: { zona: peer.zona, drones: [], fila: [] }, offline: true, peer };
+  }
+}
+
+async function atualizar() {
+  const resultados = await Promise.all(PEERS.map(p => fetchZona(p)));
+  
+  document.getElementById('zonas').innerHTML = resultados
+    .map(r => renderZona(r.data, r.offline)).join('');
+
+  document.getElementById('peers-status').innerHTML = resultados.map(r => 
+    `<span class="dot-${r.offline ? 'offline' : 'online'}"></span>${r.peer.zona}`
+  ).join('&nbsp;&nbsp;');
+
+  document.getElementById('last-update').textContent = 'Sync: ' + new Date().toLocaleTimeString();
+}
+
+// Inicialização
+atualizar();
+setInterval(atualizar, 1000);
+</script>
+</body>
+</html>
