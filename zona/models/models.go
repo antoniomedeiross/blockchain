@@ -2,7 +2,6 @@ package models
 
 import (
 	"net"
-	"sync"
 	"time"
 )
 
@@ -15,7 +14,7 @@ type Peer struct {
 	Conn     net.Conn  // Conexão com este peer (para enviar mensagens)
 }
 
-
+// STRUCT DA REQUISICAO
 type Requisicao struct {
     Tipo       string    `json:"tipo"`
     Sensor     string    `json:"sensor"`
@@ -25,8 +24,7 @@ type Requisicao struct {
     Timestamp  time.Time `json:"timestamp"`
 }
 
-// STRUCT DO DRONEEEEEE
-
+// STRUCT DO DRONE
 type DroneStatus string
 //tipos de estados possiveis
 const (
@@ -43,22 +41,22 @@ type Drone struct {
     MissaoAtual *Requisicao `json:"missao_atual,omitempty"` // missão em execução (nil se livre)
 }
 
-//STRUCT do server
-type Server struct {
-    ID     string
-    Peers  map[string]Peer
-    Drones map[string]Drone  // estado local replicado
-    mu     sync.RWMutex      // protege leitura/escrita concorrente
-}
+// //STRUCT do server NAO TO USANDO MAIS
+// type Server struct {
+//     ID     string
+//     Peers  map[string]Peer
+//     Drones map[string]Drone  // estado local replicado
+//     mu     sync.RWMutex      // protege leitura/escrita concorrente
+// }
 
-//STRUCT De update no drone
-type DroneUpdate struct {
-    Tipo       string `json:"tipo"` // "DRONE_UPDATE"
-    DroneID    string `json:"drone_id"`
-    NovoStatus string `json:"novo_status"` // "livre", "ocupado", "offline"
-    De         string `json:"de"`
-    Timestamp  int64  `json:"lamport_clock"` // usar isso no Ricart algoritmo
-}
+// //STRUCT De update no drone NAO
+// type DroneUpdate struct {
+//     Tipo       string `json:"tipo"` // "DRONE_UPDATE"
+//     DroneID    string `json:"drone_id"`
+//     NovoStatus string `json:"novo_status"` // "livre", "ocupado", "offline"
+//     De         string `json:"de"`
+//     Timestamp  int64  `json:"lamport_clock"` // usar isso no Ricart algoritmo
+// }
 
 
 // Mensagem JSON para comunicação entre peers
@@ -71,15 +69,15 @@ type Mensagem struct {
 }
 
 // TIPO DE MENSAGENS PARA ATUALIZAR OS DADOS
-type SyncRequest struct {
-	From string `json:"de"` //zona de origem
-	Tipo string `json:"tipo"` // "SINC_REQUEST"
-}
+// type SyncRequest struct {
+// 	From string `json:"de"` //zona de origem
+// 	Tipo string `json:"tipo"` // "SINC_REQUEST"
+// }
 
-type SyncResponse struct {
-	Type string `json:"type"` // "SYNC_RESPONSE"
-    Drones map[string]Drone `json:"drones"`
-}
+// type SyncResponse struct {
+// 	Type string `json:"type"` // "SYNC_RESPONSE"
+//     Drones map[string]Drone `json:"drones"`
+// }
 
 
 
@@ -92,6 +90,7 @@ const (
     EstadoNaSecao   EstadoRicart = "NA_SECAO"   // alocando o drone agora
 )
 
+// MensagemRicart é a estrutura de mensagem usada para comunicação entre peers no algoritmo de Ricart-Agrawala
 type MensagemRicart struct {
     Tipo       string `json:"tipo"`        // "REQUEST", "REPLY", "RELEASE"
     De         string `json:"de"`
@@ -109,6 +108,7 @@ type Missao struct {
 	Prioridade   int    `json:"prioridade"`
 }
 
+// MensagemDrone é a estrutura de mensagem usada para comunicação entre drones e zonas
 type MensagemDrone struct {
 	Tipo      string      `json:"tipo"`
 	De        string      `json:"de"`

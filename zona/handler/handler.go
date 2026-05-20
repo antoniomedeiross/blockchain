@@ -104,7 +104,7 @@ func ProcessarConexoes(conn net.Conn) {
 					repo.TentarAlocarDaFila()
 				}()
 
-				// Bloqueia aqui até o drone desconectar  
+				// Bloqueia aqui até o drone desconectar
 				processarDrone(droneID, conn, leitor)
 
 				return // só sai depois que o drone cair
@@ -165,9 +165,7 @@ func ProcessarConexoes(conn net.Conn) {
 			}
 
 		case "DATA":
-			// Processar dados recebidos
-			// log suprimido: dados brutos raramente necessários
-			// Aqui você pode processar os dados como desejar
+			// Nao precisei usar
 
 		case "STATUS":
 			// Responder com status do servidor
@@ -253,6 +251,7 @@ func ProcessarConexoes(conn net.Conn) {
 			log.Printf("[ESTADO] Drone %s → %s (notificado por %s)\n", drone.ID, drone.Status, peerZona)
 
 		case "GET_DRONES":
+			// Peer quer a lista atual de drones para sincronizar
 			drones := repo.BuscarDrones()
 			resposta := models.Mensagem{
 				Tipo:      "DRONES_RESPONSE",
@@ -267,6 +266,7 @@ func ProcessarConexoes(conn net.Conn) {
 			log.Printf("[SYNC] → GET_DRONES respondido para %s: %d drone(s)\n", peerZona, len(drones))
 
 		case "DRONES_RESPONSE":
+			// Recebi a lista de drones de outro peer
 			dadosJSON, _ := json.Marshal(mensagem.Dados)
 			var drones map[string]models.Drone
 			if err := json.Unmarshal(dadosJSON, &drones); err != nil {
@@ -281,6 +281,8 @@ func ProcessarConexoes(conn net.Conn) {
 			log.Printf("└────────────────────────────\n")
 
 		case "REQUEST", "REPLY", "RELEASE":
+			// Mensagens do Ricart: só repassa para a instância do Ricart processar
+
 			dadosJSON, _ := json.Marshal(mensagem.Dados)
 			var ricartMsg models.MensagemRicart
 			if err := json.Unmarshal(dadosJSON, &ricartMsg); err != nil {
@@ -289,10 +291,13 @@ func ProcessarConexoes(conn net.Conn) {
 			}
 			switch mensagem.Tipo {
 			case "REQUEST":
+				// Recebi um REQUEST de outro peer — passo para o Ricart processar e decidir se libero ou não
 				repo.RicartInstance.ReceberRequest(ricartMsg.De, ricartMsg.DroneID, ricartMsg.Timestamp, ricartMsg.Prioridade, ricartMsg.ReqTimestamp)
 			case "REPLY":
+				// Recebi um REPLY de outro peer — passo para o Ricart processar e ver se já posso entrar na seção crítica
 				repo.RicartInstance.ReceberReply(ricartMsg.De, ricartMsg.DroneID)
 			case "RELEASE":
+				// Recebi um RELEASE de outro peer — passo para o Ricart processar e ver se já posso entrar na seção crítica
 				repo.RicartInstance.ReceberRelease(ricartMsg.De, ricartMsg.DroneID)
 			}
 
@@ -307,6 +312,7 @@ func ProcessarConexoes(conn net.Conn) {
 			}
 			log.Printf("[FAILOVER] ✔ Drone %s concluiu missão em %s — Ricart liberado\n", ack.DroneID, peerZona)
 			repo.RicartInstance.Liberar(ack.DroneID)
+			// Tenta puxar a próxima requisição da fila depois que um drone fica livre
 			go func() {
 				time.Sleep(300 * time.Millisecond)
 				repo.TentarAlocarDaFila()
@@ -318,6 +324,7 @@ func ProcessarConexoes(conn net.Conn) {
 	}
 }
 
+// retorna o nome da zona atual
 func getZonaAtual() string {
 	zona := os.Getenv("ZONA")
 	if zona == "" {
@@ -326,7 +333,9 @@ func getZonaAtual() string {
 	return zona
 }
 
-// FUNCOES
+// FUNCOES =====================================================================
+
+// processar as mensagens de um drone específico até ele desconectar (missão concluída ou falha)
 func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 	defer func() {
 		log.Printf("[DRONE] ✗ Drone %s desconectado\n", droneID)
@@ -380,7 +389,6 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 			continue
 		}
 
-	
 		// Processar tipos de mensagem do drone
 		switch mensagem.Tipo {
 		// Quando o drone conclui a missão, precisamos atualizar o estado local, notificar os peers e liberar o Ricart
@@ -415,7 +423,7 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 			repo.BroadcastFn(d)
 
 			if droneELocal {
-				// Drone local: libera o Ricart normalmente
+				// Drone local -> libera o Ricart normalmente
 				repo.RicartInstance.Liberar(droneID)
 			} else {
 				// Drone de failover: a zona base foi quem iniciou o Ricart,
@@ -429,7 +437,6 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 				time.Sleep(500 * time.Millisecond)
 				repo.TentarAlocarDaFila()
 			}()
-
 
 		// quando conecta o drone pede a lista de peers para saber para onde ir quando cair
 		case "GET_PEERS_LIST":

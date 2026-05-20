@@ -207,7 +207,7 @@ func init() {
 }
 
 // envelhecerFila incrementa a prioridade de todas as requisições pendentes
-// a cada 10 segundos, até o máximo de 5, para evitar starvation.
+// a cada 10 segundos, até o máximo de 5
 func envelhecerFila() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -228,6 +228,7 @@ func envelhecerFila() {
 	}
 }
 
+// Enfileirar adiciona uma nova requisição à fila de prioridade.
 func Enfileirar(req models.Requisicao) {
 	FilaMutex.Lock()
 	heap.Push(RequisicoesPendentes, req)
@@ -257,6 +258,7 @@ func NotificarMissaoConcluida(zonaBase string, droneID string) {
 	peer.Conn.Write(append(data, '\n'))
 }
 
+// ProximaRequisicao retorna a próxima requisição da fila, ou false se a fila estiver vazia.
 func ProximaRequisicao() (models.Requisicao, bool) {
 	FilaMutex.Lock()
 	defer FilaMutex.Unlock()
@@ -267,6 +269,7 @@ func ProximaRequisicao() (models.Requisicao, bool) {
 	return req, true
 }
 
+// TentarAlocarDaFila verifica se tem requisições pendentes e drones livres, e tenta alocar o drone para a requisição mais prioritária.
 func TentarAlocarDaFila() {
 	// 1. Verifica o estado do Ricart.
 	RicartInstance.Mu.Lock()
@@ -315,4 +318,3 @@ func TentarAlocarDaFila() {
 	log.Printf("[FILA] ✔ Drone selecionado: %s\n", drone.ID)
 }
 
-//
