@@ -449,14 +449,20 @@ func main() {
 				repo.RicartInstance.Mu.Lock()
 				reqPerdida := repo.RicartInstance.RequisicaoAtual
 				repo.RicartInstance.Mu.Unlock()
+
 				if reqPerdida != nil {
 					log.Printf("[ALOCAÇÃO] ↩ Drone %s já ocupado — recolocando req '%s' na fila\n", droneID, reqPerdida.Ocorrencia)
 					repo.Enfileirar(*reqPerdida)
 				}
+
+				// Recoloca o drone no estado livre para atualizar o estado distribuído e avisar os outros peers
 				repo.RicartInstance.Liberar(droneID)
+				// Tenta alocar outro drone da fila, se tiver
 				go repo.TentarAlocarDaFila()
 				return
 			}
+
+			// Drone está livre aqui — aloca localmente e envia missão para o drone físico
 			reqAtual := repo.RicartInstance.RequisicaoAtual
 			repo.DroneMutex.Unlock()
 
@@ -473,6 +479,7 @@ func main() {
 			}
 			data, _ := json.Marshal(missao)
 
+			// Tenta enviar missão para o drone físico conectado aqui
 			if repo.EnviarParaDrone(droneID, data) {
 				// Drone está conectado fisicamente aqui — atualiza ZonaAtual para cá
 				repo.DroneMutex.Lock()
@@ -482,11 +489,13 @@ func main() {
 				repo.Drones[droneID] = drone
 				repo.DroneMutex.Unlock()
 
+				// Envia update do drone para os peers para atualizar o estado distribuído
 				BroadcastDroneUpdate(drone)
 				repo.RegistrarGerenciamento(droneID)
 				log.Printf("\n[ALOCAÇÃO] ══► Drone %s alocado localmente em %s\n", droneID, getZona())
 				log.Printf("[MISSÃO] ► Missão enviada diretamente para %s\n", droneID)
 				// Liberar é chamado quando MISSAO_CONCLUIDA chegar via processarDrone
+
 				// watchdog: se o drone não concluir em 6s, libera
 				go func() {
 					time.Sleep(6 * time.Second)
@@ -494,8 +503,9 @@ func main() {
 					d := repo.Drones[droneID]
 					repo.DroneMutex.RUnlock()
 
+					// Se o drone ainda estiver ocupado e com a mesma missão, considera que ele falhou ou perdeu conexão — libera e tenta alocar outro da fila
 					if d.Status == models.StatusOcupado && d.MissaoAtual != nil {
-						log.Printf("[WATCHDOG] ⚠ Drone %s não concluiu missão em 60s — liberando\n", droneID)
+						log.Printf("[WATCHDOG] ⚠ Drone %s não concluiu missão em 6s — liberando\n", droneID)
 						repo.DroneMutex.Lock()
 						missaoPerdida := d.MissaoAtual
 						d.MissaoAtual = nil
@@ -505,6 +515,8 @@ func main() {
 
 						repo.Enfileirar(*missaoPerdida)
 						repo.RicartInstance.Liberar(droneID)
+
+						// Tenta alocar outro drone da fila, se tiver
 						go repo.TentarAlocarDaFila()
 					}
 				}()
@@ -518,7 +530,9 @@ func main() {
 				}
 
 				minhaZona := getZona()
+
 				// Se ZonaAtual aponta para nós mas não temos o socket, estado desatualizado
+
 				// Tenta encontrar em qual peer o drone realmente está
 				if zonaDestino == minhaZona {
 					log.Printf("[MISSÃO] ⚠ Drone %s: ZonaAtual=%s mas não conectado aqui — buscando peer vivo\n", droneID, minhaZona)
@@ -532,6 +546,7 @@ func main() {
 					}
 					repo.Mutex.RUnlock()
 
+					// Se não encontrar nenhum peer vivo, libera a requisição para não travar a fila
 					if zonaDestino == "" {
 						log.Printf("[MISSÃO] ✗ Nenhum peer vivo para drone %s — liberando Ricart\n", droneID)
 						repo.RicartInstance.Liberar(droneID)
@@ -547,9 +562,12 @@ func main() {
 				repo.Drones[droneID] = drone
 				repo.DroneMutex.Unlock()
 
+				// update em broadcast 
 				BroadcastDroneUpdate(drone)
 				repo.RegistrarGerenciamento(droneID)
 				log.Printf("\n[ALOCAÇÃO] ══► Drone %s alocado remotamente → enviando para %s\n", droneID, zonaDestino)
+
+				// Envia missão para a zona correta do drone — lá o Ricart é liberado quando a missão for despachada para o drone físico, não aqui
 				enviarParaZona(zonaDestino, models.Mensagem{
 					Tipo:  "DESPACHAR_DRONE",
 					De:    getZona(),
@@ -563,8 +581,8 @@ func main() {
 		},
 
 		AoFalharAlocacao: func() {
-			// Não faz mais nada — AoAlocar já chama Liberar + TentarAlocarDaFila
-			// Este callback só existe para compatibilidade
+			// Não faz mais nada
+			// so mostra um aviso 
 			log.Printf("[ALOCAÇÃO] ⚠ AoFalharAlocacao chamado — verifique a lógica de seleção\n")
 		},
 
@@ -581,11 +599,13 @@ func main() {
 			return lista
 		},
 
+		// TentarAlocar é chamado pelo Ricart quando um drone fica livre e tem uma requisição aguardando na fila — tenta alocar o drone para a requisição mais prioritária da fila
 		TentarAlocar: func() {
 			time.Sleep(200 * time.Millisecond) // pequeno delay para o DRONE_UPDATE chegar antes
 			repo.TentarAlocarDaFila()
 		},
 
+		// ReenfileirarReq é chamado pelo Ricart quando uma requisição falha na alocação (ex: drone alocado por outro peer) e precisa ser reenfileirada para tentar alocar outro drone
 		ReenfileirarReq: func(req models.Requisicao) {
 			repo.Enfileirar(req)
 		},
@@ -646,12 +666,14 @@ func main() {
 
 	log.Println("TCP rodando na porta 9090")
 
+	// Loop principal para aceitar conexões de drones físicos e peers
 	for {
 		conn, err := listner.Accept()
 		if err != nil {
 			continue
 		}
 
+		// Cada conexão é processada em uma goroutine separada para não bloquear o loop de aceitação
 		go handler.ProcessarConexoes(conn)
 	}
 

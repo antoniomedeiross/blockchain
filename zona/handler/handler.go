@@ -181,6 +181,7 @@ func ProcessarConexoes(conn net.Conn) {
 			}
 
 		case "REQUISICAO_DRONE":
+			// Recebi uma requisição de drone de um peer — enfileira e tenta alocar
 			dadosJSON, _ := json.Marshal(mensagem.Dados)
 			var req models.Requisicao
 			if err := json.Unmarshal(dadosJSON, &req); err != nil {
@@ -211,6 +212,7 @@ func ProcessarConexoes(conn net.Conn) {
 				log.Printf("[MISSÃO] ✗ ERRO: Drone %s não está conectado localmente\n", missao.DroneID)
 			}
 
+			
 		case "SYNC_REQUEST":
 			// Peer conectou e quer o estado atual dos drones
 			drones := repo.BuscarDrones()
