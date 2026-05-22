@@ -3,7 +3,7 @@ services:
   peer1:
     build:
       context: .
-      dockerfile: zona/Dockerfile
+      dockerfile: zona/server/Dockerfile
     container_name: peer1
     ports:
       - "9090:9090"
@@ -19,7 +19,7 @@ services:
   peer2:
     build:
       context: .
-      dockerfile: zona/Dockerfile
+      dockerfile: zona/server/Dockerfile
     container_name: peer2
     ports:
       - "9091:9090"
@@ -35,7 +35,7 @@ services:
   peer3:
     build:
       context: .
-      dockerfile: zona/Dockerfile
+      dockerfile: zona/server/Dockerfile
     container_name: peer3
     ports:
       - "9092:9090"
@@ -122,7 +122,43 @@ services:
       - peer1
     networks:
       - pbl-network
-      
+
+  interface:
+    build:
+      context: ./interface
+      dockerfile: Dockerfile
+    container_name: interface
+    ports:
+      - "3000:80"
+    environment:
+      - PEER_NORTE=localhost:8081
+      - PEER_SUL=localhost:8082
+      - PEER_LESTE=localhost:8083
+    depends_on:
+      - peer1
+      - peer2
+      - peer3
+    networks:
+      - pbl-network
+
+  teste:
+    build:
+      context: .
+      dockerfile: test/Dockerfile
+    container_name: teste
+    environment:
+      - PEER1=peer1:9090
+      - PEER2=peer2:9090
+      - PEER3=peer3:9090
+    depends_on:
+      - peer1
+      - peer2
+      - peer3
+    networks:
+      - pbl-network
+    profiles:
+      - teste
+
 networks:
   pbl-network:
     driver: bridge
