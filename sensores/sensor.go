@@ -14,10 +14,18 @@ import (
 type Requisicao struct {
 	Tipo      string `json:"tipo"`       // "REQUISICAO_DRONE"
 	Sensor    string `json:"sensor"`     // ID do sensor
+	EmpresaID string `json:"empresa_id"` // Empresa pagadora
 	Zona      string `json:"zona"`       // zona que ele pertence
 	Ocorrencia string `json:"ocorrencia"` // tipo de ocorrência
 	Prioridade int   `json:"prioridade"` // 0 a 5
 	Timestamp time.Time `json:"timestamp"`
+}
+
+var empresas = []string{
+	"empresa-alpha",
+	"empresa-beta",
+	"empresa-gamma",
+	"empresa-delta",
 }
 
 var ocorrencias = []string{
@@ -51,13 +59,15 @@ func main() {
 	time.Sleep(5 * time.Second)
 
 	for {
-		// Gera ocorrência aleatória
+		// Gera ocorrência e empresa aleatória
 		ocorrencia := ocorrencias[rand.Intn(len(ocorrencias))]
+		empresa := empresas[rand.Intn(len(empresas))]
 		prioridade := rand.Intn(6) // 0 a 5
 
 		req := Requisicao{
 			Tipo:       "REQUISICAO_DRONE",
 			Sensor:     sensorID,
+			EmpresaID:  empresa,
 			Zona:       zona,
 			Ocorrencia: ocorrencia,
 			Prioridade: prioridade,

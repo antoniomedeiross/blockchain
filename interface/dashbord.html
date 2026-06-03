@@ -302,6 +302,18 @@
   <!-- preenchido pelo JS -->
 </div>
 
+<!-- CONTAINER DO LEDGER (GLOBAL) -->
+<div class="ledger-container" id="ledger-container" style="max-width: 1200px; margin: 0 auto 28px; background: #111827; border: 1px solid #1e2a3a; border-radius: 12px; padding: 20px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <h2 style="font-size: 1.1rem; color: #a78bfa; letter-spacing: 2px;">LEDGER DISTRIBUÍDO</h2>
+    <div id="ledger-saldos" style="display: flex; gap: 10px; font-size: 0.8rem;"></div>
+  </div>
+  <div class="secao-titulo">Últimos Blocos</div>
+  <div id="ledger-blocos" style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">
+    <!-- preenchido pelo js -->
+  </div>
+</div>
+
 <div class="status-bar">
   <span id="peers-status">Conectando...</span>
   <span class="last-update" id="last-update"></span>
@@ -473,7 +485,16 @@ async function atualizar() {
     .map(r => renderZona(r.data, r.offline))
     .join('')
 
-  const online = resultados.filter(r => !r.offline).length
+  const online = resultados.filter(r => !r.offline)
+  
+  // Renderizar o Ledger Global baseado no primeiro peer online (todos devem ter o mesmo estado eventual)
+  if (online.length > 0) {
+    const data = online[0].data
+    if (data.ledger && data.saldos) {
+      renderLedger(data.ledger, data.saldos)
+    }
+  }
+
   const statusEl = document.getElementById('peers-status')
   statusEl.innerHTML = PEERS.map((p, i) => {
     const off = resultados[i].offline
@@ -482,6 +503,50 @@ async function atualizar() {
 
   document.getElementById('last-update').textContent =
     'Última atualização: ' + new Date().toLocaleTimeString('pt-BR')
+}
+
+function renderLedger(blocos, saldos) {
+  // Atualiza Saldos
+  const saldosHTML = Object.keys(saldos).map(empresa => {
+    return `<div style="background:#1a2236; padding: 4px 10px; border-radius: 6px; border: 1px solid #374151;">
+              <span style="color:#cbd5e1; font-weight:600">${empresa}:</span>
+              <span style="color:#34d399; margin-left:4px">¢ ${saldos[empresa]}</span>
+            </div>`
+  }).join('')
+  document.getElementById('ledger-saldos').innerHTML = saldosHTML
+
+  // Atualiza Blocos (Inverte para mostrar os mais recentes primeiro)
+  const blocosReverse = [...blocos].reverse()
+  const blocosHTML = blocosReverse.map(b => {
+    let txInfo = ''
+    let icon = ''
+    let borderColor = '#374151'
+    if (b.transacao.tipo === 'GENESIS') {
+      txInfo = `Emissão Inicial de ¢ ${b.transacao.creditos}`
+      icon = '💎'
+    } else if (b.transacao.tipo === 'PAGAMENTO') {
+      txInfo = `Gasto ¢ ${b.transacao.creditos} | Drone ID: ${b.transacao.drone_id || '-'}`
+      icon = '💳'
+      borderColor = '#b91c1c'
+    } else if (b.transacao.tipo === 'LAUDO') {
+      txInfo = `Auditoria: ${nomeOcorrencia(b.transacao.ocorrencia)} | Zona: ${b.transacao.zona}`
+      icon = '📋'
+      borderColor = '#3b82f6'
+    }
+    
+    return `
+      <div style="background: #1a2236; border-left: 3px solid ${borderColor}; padding: 10px; border-radius: 4px; display: flex; gap: 10px; align-items: center; font-size: 0.75rem;">
+        <div style="font-size: 1.2rem; background: #111827; padding: 6px; border-radius: 8px;">${icon}</div>
+        <div style="flex: 1;">
+          <div style="color: #cbd5e1; font-weight: 600;">Bloco #${b.index} — ${b.transacao.tipo} <span style="color: #94a3b8; font-size: 0.65rem; margin-left:6px;">Minerado por: ${b.minerador}</span></div>
+          <div style="color: #94a3b8; margin-top: 2px;">Empresa: <span style="color:#fcd34d">${b.transacao.empresa_id}</span> • ${txInfo}</div>
+          <div style="color: #64748b; font-family: monospace; font-size: 0.65rem; margin-top: 4px;">Hash: ${b.hash}</div>
+        </div>
+      </div>
+    `
+  }).join('')
+  
+  document.getElementById('ledger-blocos').innerHTML = blocosHTML
 }
 
 atualizar()

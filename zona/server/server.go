@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"pbl-2/zona/handler"
+	"pbl-2/zona/ledger"
 	"pbl-2/zona/models"
 	"pbl-2/zona/repo"
 	"pbl-2/zona/ricart"
@@ -26,6 +27,8 @@ type StatusHTTP struct {
 	Fila              []RequisicaoHTTP `json:"fila"`
 	Peers             []PeerHTTP       `json:"peers"`
 	DronesGerenciados []string         `json:"drones_gerenciados"`
+	Ledger            []ledger.Bloco   `json:"ledger"`
+	Saldos            map[string]int   `json:"saldos"`
 }
 
 type DroneHTTP struct {
@@ -154,6 +157,15 @@ func conectarAosPeers(peers []string) {
 					// Processa a mensagem de acordo com o tipo
 
 					switch mensagem.Tipo {
+
+					case "BLOCO":
+						dadosJSON, _ := json.Marshal(mensagem.Dados)
+						var bloco ledger.Bloco
+						if err := json.Unmarshal(dadosJSON, &bloco); err != nil {
+							log.Printf("Erro ao parsear BLOCO: %v\n", err)
+							continue
+						}
+						ledger.AceitarBlocoExterno(bloco)
 
 					// SYNC_RESPONSE é a resposta ao SYNC_REQUEST enviado logo após a conexão
 					case "SYNC_RESPONSE":
@@ -345,6 +357,14 @@ func iniciarHTTP() {
 	// /status — retorna estado completo desta zona em JSON
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 
 		// Drones
@@ -392,6 +412,19 @@ func iniciarHTTP() {
 			repo.RicartInstance.Mu.Unlock()
 		}
 
+		// Buscar informações do Ledger
+		blocos := []ledger.Bloco{}
+		saldos := make(map[string]int)
+		if ledger.Instancia != nil {
+			blocos = ledger.Instancia.Snapshot()
+			// Vamos calcular o saldo para todas as empresas mapeadas (as que estao no genesis e geraram alguma transacao)
+			for _, b := range blocos {
+				if b.Tx.EmpresaID != "" {
+					saldos[b.Tx.EmpresaID] = ledger.ConsultarSaldo(b.Tx.EmpresaID)
+				}
+			}
+		}
+
 		// Monta struct de status completo para enviar como JSON no endpoint
 		status := StatusHTTP{
 			Zona:              getZona(),
@@ -400,6 +433,8 @@ func iniciarHTTP() {
 			Fila:              fila,
 			Peers:             peers,
 			DronesGerenciados: repo.ListarGerenciados(),
+			Ledger:            blocos,
+			Saldos:            saldos,
 		}
 
 		json.NewEncoder(w).Encode(status)
@@ -415,6 +450,17 @@ func iniciarHTTP() {
 
 // --- MAIN -----------------------------------------------------------------------------
 func main() {
+	// Iniciar Ledger
+	ledger.IniciarLedger(getZona())
+	ledger.PropagaBloco = func(bloco ledger.Bloco) {
+		enviarParaTodos(models.Mensagem{
+			Tipo:      "BLOCO",
+			De:        getZona(),
+			Dados:     bloco,
+			Timestamp: time.Now(),
+		})
+	}
+
 	// Buscar lista de peers
 	peers := buscarPears()
 

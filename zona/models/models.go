@@ -18,6 +18,7 @@ type Peer struct {
 type Requisicao struct {
     Tipo       string    `json:"tipo"`
     Sensor     string    `json:"sensor"`
+    EmpresaID  string    `json:"empresa_id"` // quem está pagando pela missão
     Zona       string    `json:"zona"`
     Ocorrencia string    `json:"ocorrencia"`
     Prioridade int       `json:"prioridade"`

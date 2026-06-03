@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"pbl-2/zona/ledger"
 	"pbl-2/zona/models"
 	"pbl-2/zona/repo"
 	"strings"
@@ -180,6 +181,15 @@ func ProcessarConexoes(conn net.Conn) {
 				conn.Write(append(data, '\n'))
 			}
 
+		case "BLOCO":
+			dadosJSON, _ := json.Marshal(mensagem.Dados)
+			var bloco ledger.Bloco
+			if err := json.Unmarshal(dadosJSON, &bloco); err != nil {
+				log.Printf("Erro ao parsear BLOCO: %v\n", err)
+				continue
+			}
+			ledger.AceitarBlocoExterno(bloco)
+
 		case "REQUISICAO_DRONE":
 			// Recebi uma requisição de drone de um peer — enfileira e tenta alocar
 			dadosJSON, _ := json.Marshal(mensagem.Dados)
@@ -188,6 +198,14 @@ func ProcessarConexoes(conn net.Conn) {
 				log.Printf("Erro ao parsear REQUISICAO_DRONE: %v\n", err)
 				continue
 			}
+
+			// REGISTRO DE PAGAMENTO (DOUBLE SPEND PROTECTION)
+			err := ledger.RegistrarPagamento(req.EmpresaID, "", req.Ocorrencia, req.Zona)
+			if err != nil {
+				log.Printf("[LEDGER] ✗ Requisição de %s negada: %v\n", req.EmpresaID, err)
+				continue // rejeita a requisição
+			}
+
 			log.Printf("[FILA] ↓ Nova req de %s enfileirada — prioridade=%d (%s)\n", req.Sensor, req.Prioridade, req.Ocorrencia)
 
 			// Coloca na fila de prioridade
@@ -402,6 +420,12 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 			repo.DroneMutex.Lock()
 			// Verifica se o drone é da própria zona ou de failover (reconectou aqui, mas a base é outra)
 			d := repo.Drones[droneID]
+
+			// REGISTRO DE LAUDO (IMUTABILIDADE E AUDITORIA)
+			if d.MissaoAtual != nil {
+				ledger.RegistrarLaudo(d.MissaoAtual.EmpresaID, droneID, d.MissaoAtual.Ocorrencia, d.ZonaAtual)
+			}
+
 			d.Status = models.StatusLivre
 			d.MissaoAtual = nil
 
