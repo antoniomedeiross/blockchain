@@ -18,25 +18,25 @@ func IniciarLedger(zonaID string) {
 	Instancia = NovaChain(zonaID)
 }
 
-// RegistrarPagamento debita créditos de uma empresa e adiciona o bloco à chain.
+// RegistrarPagamento debita créditos de uma zona e adiciona o bloco à chain.
 // Chamado antes de despachar o drone (em TentarAlocarDaFila).
-// Retorna erro se a empresa não tiver saldo suficiente (double-spend bloqueado).
-func RegistrarPagamento(empresaID string, droneID string, ocorrencia string, zona string) error {
+// Retorna erro se a zona não tiver saldo suficiente (double-spend bloqueado).
+func RegistrarPagamento(zonaID string, droneID string, ocorrencia string, zona string) error {
 	if Instancia == nil {
 		log.Println("[LEDGER] ⚠ Ledger não inicializado")
 		return nil // não bloqueia o sistema se ledger não tiver ativo
 	}
 
-	if !Instancia.TemSaldo(empresaID) {
-		saldo := Instancia.SaldoEmpresa(empresaID)
-		log.Printf("[LEDGER] ✗ Empresa %s sem créditos (saldo=%d, custo=%d)\n",
-			empresaID, saldo, CustoPorRequisicao)
+	if !Instancia.TemSaldo(zonaID) {
+		saldo := Instancia.SaldoZona(zonaID)
+		log.Printf("[LEDGER] ✗ Zona %s sem créditos (saldo=%d, custo=%d)\n",
+			zonaID, saldo, CustoPorRequisicao)
 		return ErrSaldoInsuficiente
 	}
 
 	tx := Transacao{
 		Tipo:       TxPagamento,
-		EmpresaID:  empresaID,
+		ZonaID:     zonaID,
 		Creditos:   CustoPorRequisicao,
 		DroneID:    droneID,
 		Ocorrencia: ocorrencia,
@@ -49,13 +49,13 @@ func RegistrarPagamento(empresaID string, droneID string, ocorrencia string, zon
 		return err
 	}
 
-	// Propaga o bloco minerado para os peers
+	// Propaga o bloco minerado para los peers
 	if PropagaBloco != nil {
 		go PropagaBloco(bloco)
 	}
 
-	log.Printf("[LEDGER] 💳 Pagamento registrado — empresa=%s drone=%s saldo_restante=%d\n",
-		empresaID, droneID, Instancia.SaldoEmpresa(empresaID))
+	log.Printf("[LEDGER] 💳 Pagamento registrado — zona=%s drone=%s saldo_restante=%d\n",
+		zonaID, droneID, Instancia.SaldoZona(zonaID))
 
 	return nil
 }
@@ -63,14 +63,14 @@ func RegistrarPagamento(empresaID string, droneID string, ocorrencia string, zon
 // RegistrarLaudo grava o resultado de uma missão como bloco imutável na chain.
 // Chamado quando MISSAO_CONCLUIDA é recebido pelo handler.
 // Não altera saldo — é puramente auditoria.
-func RegistrarLaudo(empresaID string, droneID string, ocorrencia string, zona string) {
+func RegistrarLaudo(zonaID string, droneID string, ocorrencia string, zona string) {
 	if Instancia == nil {
 		return
 	}
 
 	tx := Transacao{
 		Tipo:       TxLaudo,
-		EmpresaID:  empresaID,
+		ZonaID:     zonaID,
 		DroneID:    droneID,
 		Ocorrencia: ocorrencia,
 		Zona:       zona,
@@ -87,8 +87,8 @@ func RegistrarLaudo(empresaID string, droneID string, ocorrencia string, zona st
 		go PropagaBloco(bloco)
 	}
 
-	log.Printf("[LEDGER] 📋 Laudo registrado — empresa=%s drone=%s ocorrencia=%s hash=%s\n",
-		empresaID, droneID, ocorrencia, bloco.Hash[:12])
+	log.Printf("[LEDGER] 📋 Laudo registrado — zona=%s drone=%s ocorrencia=%s hash=%s\n",
+		zonaID, droneID, ocorrencia, bloco.Hash[:12])
 }
 
 // AceitarBlocoExterno recebe um bloco propagado por outro peer e o adiciona à chain local.
@@ -101,15 +101,15 @@ func AceitarBlocoExterno(bloco Bloco) {
 	}
 }
 
-// ConsultarSaldo retorna o saldo atual de uma empresa.
-func ConsultarSaldo(empresaID string) int {
+// ConsultarSaldo retorna o saldo atual de uma zona.
+func ConsultarSaldo(zonaID string) int {
 	if Instancia == nil {
 		return 0
 	}
-	return Instancia.SaldoEmpresa(empresaID)
+	return Instancia.SaldoZona(zonaID)
 }
 
-// ErrSaldoInsuficiente é retornado quando a empresa não tem créditos.
+// ErrSaldoInsuficiente é retornado quando a zona não tem créditos.
 var ErrSaldoInsuficiente = ledgerErro("saldo insuficiente para requisitar drone")
 
 type ledgerErro string

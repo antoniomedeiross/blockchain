@@ -24,6 +24,7 @@ import (
 type Requisicao struct {
 	Tipo       string    `json:"tipo"`
 	Sensor     string    `json:"sensor"`
+	ZonaID     string    `json:"zona_id"`
 	Zona       string    `json:"zona"`
 	Ocorrencia string    `json:"ocorrencia"`
 	Prioridade int       `json:"prioridade"`
@@ -231,6 +232,7 @@ func enviarRequisicao(peerAddr, sensorID, zona, ocorrencia string, prioridade in
 	req := Requisicao{
 		Tipo:       "REQUISICAO_DRONE",
 		Sensor:     sensorID,
+		ZonaID:     zona,
 		Zona:       zona,
 		Ocorrencia: ocorrencia,
 		Prioridade: prioridade,

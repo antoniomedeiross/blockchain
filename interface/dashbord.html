@@ -507,10 +507,10 @@ async function atualizar() {
 
 function renderLedger(blocos, saldos) {
   // Atualiza Saldos
-  const saldosHTML = Object.keys(saldos).map(empresa => {
+  const saldosHTML = Object.keys(saldos).map(zona => {
     return `<div style="background:#1a2236; padding: 4px 10px; border-radius: 6px; border: 1px solid #374151;">
-              <span style="color:#cbd5e1; font-weight:600">${empresa}:</span>
-              <span style="color:#34d399; margin-left:4px">¢ ${saldos[empresa]}</span>
+              <span style="color:#cbd5e1; font-weight:600">${zona}:</span>
+              <span style="color:#34d399; margin-left:4px">¢ ${saldos[zona]}</span>
             </div>`
   }).join('')
   document.getElementById('ledger-saldos').innerHTML = saldosHTML
@@ -539,7 +539,7 @@ function renderLedger(blocos, saldos) {
         <div style="font-size: 1.2rem; background: #111827; padding: 6px; border-radius: 8px;">${icon}</div>
         <div style="flex: 1;">
           <div style="color: #cbd5e1; font-weight: 600;">Bloco #${b.index} — ${b.transacao.tipo} <span style="color: #94a3b8; font-size: 0.65rem; margin-left:6px;">Minerado por: ${b.minerador}</span></div>
-          <div style="color: #94a3b8; margin-top: 2px;">Empresa: <span style="color:#fcd34d">${b.transacao.empresa_id}</span> • ${txInfo}</div>
+          <div style="color: #94a3b8; margin-top: 2px;">Zona: <span style="color:#fcd34d">${b.transacao.zona_id}</span> • ${txInfo}</div>
           <div style="color: #64748b; font-family: monospace; font-size: 0.65rem; margin-top: 4px;">Hash: ${b.hash}</div>
         </div>
       </div>

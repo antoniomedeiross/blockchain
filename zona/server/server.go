@@ -246,8 +246,8 @@ func conectarAosPeers(peers []string) {
 								log.Printf("Erro ao parsear REQUISICAO_DRONE: %v\n", err)
 								continue
 							}
-							log.Printf("[SENSOR] ► Requisição de %s — ocorrência: %s, prioridade: %d\n",
-								req.Sensor, req.Ocorrencia, req.Prioridade)
+							log.Printf("[SENSOR] ► Requisição de %s (zona %s) — ocorrência: %s, prioridade: %d\n",
+								req.Sensor, req.ZonaID, req.Ocorrencia, req.Prioridade)
 
 							// Dispara alocação de drone
 							go func() {
@@ -417,10 +417,10 @@ func iniciarHTTP() {
 		saldos := make(map[string]int)
 		if ledger.Instancia != nil {
 			blocos = ledger.Instancia.Snapshot()
-			// Vamos calcular o saldo para todas as empresas mapeadas (as que estao no genesis e geraram alguma transacao)
+			// Vamos calcular o saldo para todas as zonas mapeadas
 			for _, b := range blocos {
-				if b.Tx.EmpresaID != "" {
-					saldos[b.Tx.EmpresaID] = ledger.ConsultarSaldo(b.Tx.EmpresaID)
+				if b.Tx.ZonaID != "" {
+					saldos[b.Tx.ZonaID] = ledger.ConsultarSaldo(b.Tx.ZonaID)
 				}
 			}
 		}
@@ -511,6 +511,19 @@ func main() {
 			// Drone está livre aqui — aloca localmente e envia missão para o drone físico
 			reqAtual := repo.RicartInstance.RequisicaoAtual
 			repo.DroneMutex.Unlock()
+
+			// PAGAMENTO NA ALOCAÇÃO: Desconta o saldo apenas quando o drone for efetivamente despachado
+			if reqAtual != nil {
+				err := ledger.RegistrarPagamento(reqAtual.ZonaID, droneID, reqAtual.Ocorrencia, reqAtual.Zona)
+				if err != nil {
+					log.Printf("[LEDGER] ✗ Falha no pagamento na alocação para %s: %v\n", reqAtual.ZonaID, err)
+					// Recoloca a requisição na fila para não perder o pedido (ela fica salva)
+					repo.Enfileirar(*reqAtual)
+					repo.RicartInstance.Liberar(droneID)
+					go repo.TentarAlocarDaFila()
+					return
+				}
+			}
 
 			missao := models.MensagemDrone{
 				Tipo:    "MISSAO",

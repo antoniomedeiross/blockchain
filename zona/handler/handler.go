@@ -199,13 +199,6 @@ func ProcessarConexoes(conn net.Conn) {
 				continue
 			}
 
-			// REGISTRO DE PAGAMENTO (DOUBLE SPEND PROTECTION)
-			err := ledger.RegistrarPagamento(req.EmpresaID, "", req.Ocorrencia, req.Zona)
-			if err != nil {
-				log.Printf("[LEDGER] ✗ Requisição de %s negada: %v\n", req.EmpresaID, err)
-				continue // rejeita a requisição
-			}
-
 			log.Printf("[FILA] ↓ Nova req de %s enfileirada — prioridade=%d (%s)\n", req.Sensor, req.Prioridade, req.Ocorrencia)
 
 			// Coloca na fila de prioridade
@@ -219,6 +212,14 @@ func ProcessarConexoes(conn net.Conn) {
 			dadosJSON, _ := json.Marshal(mensagem.Dados)
 			var missao models.MensagemDrone
 			if err := json.Unmarshal(dadosJSON, &missao); err != nil {
+				continue
+			}
+
+			// VALIDAÇÃO DE SEGURANÇA: Verifica se a zona que enviou o DESPACHAR tem saldo
+			// no MEU ledger local. Se ela mandou um bloco falso, meu ledger rejeitou,
+			// então o saldo dela aqui estará baixo.
+			if !ledger.Instancia.TemSaldo(mensagem.De) {
+				log.Printf("[SEGURANÇA] ✗ Tentativa de DESPACHAR de %s negada: saldo insuficiente no ledger local\n", mensagem.De)
 				continue
 			}
 
@@ -423,7 +424,7 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 
 			// REGISTRO DE LAUDO (IMUTABILIDADE E AUDITORIA)
 			if d.MissaoAtual != nil {
-				ledger.RegistrarLaudo(d.MissaoAtual.EmpresaID, droneID, d.MissaoAtual.Ocorrencia, d.ZonaAtual)
+				ledger.RegistrarLaudo(d.MissaoAtual.ZonaID, droneID, d.MissaoAtual.Ocorrencia, d.ZonaAtual)
 			}
 
 			d.Status = models.StatusLivre

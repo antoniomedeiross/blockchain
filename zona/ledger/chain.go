@@ -7,21 +7,18 @@ import (
 	"time"
 )
 
-// saldoInicialPorEmpresa define os créditos que cada empresa começa com no bloco gênesis.
-// Empresas não listadas aqui não têm saldo e não podem requisitar drones.
-var saldoInicialPorEmpresa = map[string]int{
-	"empresa-alpha":   100,
-	"empresa-beta":    80,
-	"empresa-gamma":   60,
-	"empresa-delta":   40,
+// saldoInicialPorZona define os créditos que cada zona começa com no bloco gênesis.
+var saldoInicialPorZona = map[string]int{
+	"NORTE": 200,
+	"SUL":   200,
+	"LESTE": 200,
 }
 
 // Ordem determinística para gerar o gênesis (evita divergências de hash entre os nodes)
-var ordemEmpresasGenesis = []string{
-	"empresa-alpha",
-	"empresa-beta",
-	"empresa-gamma",
-	"empresa-delta",
+var ordemZonasGenesis = []string{
+	"NORTE",
+	"SUL",
+	"LESTE",
 }
 
 // CustoPorRequisicao é quantos créditos uma requisição de drone consome.
@@ -44,13 +41,13 @@ func NovaChain(zonaID string) *Chain {
 	// Tempo base determinístico para os blocos gênesis (garante que todos os peers gerem o mesmo hash de origem)
 	tempoGenesis := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	// Bloco gênesis: uma transação especial que "emite" os créditos de cada empresa.
+	// Bloco gênesis: uma transação especial que "emite" os créditos de cada zona.
 	// Não representa gasto — é o ponto de partida imutável da ledger.
-	for _, empresa := range ordemEmpresasGenesis {
-		saldo := saldoInicialPorEmpresa[empresa]
+	for _, zona := range ordemZonasGenesis {
+		saldo := saldoInicialPorZona[zona]
 		tx := Transacao{
 			Tipo:      TxGenesis,
-			EmpresaID: empresa,
+			ZonaID:    zona,
 			Creditos:  saldo, // positivo = emissão inicial
 			Timestamp: tempoGenesis,
 		}
@@ -74,8 +71,8 @@ func NovaChain(zonaID string) *Chain {
 
 		bloco = Minerar(bloco)
 		c.Blocos = append(c.Blocos, bloco)
-		log.Printf("[LEDGER] ⛏  Gênesis determinístico — empresa=%s saldo=%d hash=%s\n",
-			empresa, saldo, bloco.Hash[:12])
+		log.Printf("[LEDGER] ⛏  Gênesis determinístico — zona=%s saldo=%d hash=%s\n",
+			zona, saldo, bloco.Hash[:12])
 	}
 
 	log.Printf("[LEDGER] ✔ Chain inicializada com %d blocos gênesis\n", len(c.Blocos))
@@ -97,8 +94,8 @@ func (c *Chain) AdicionarBloco(tx Transacao) (Bloco, error) {
 	bloco = Minerar(bloco)
 
 	c.Blocos = append(c.Blocos, bloco)
-	log.Printf("[LEDGER] ⛏  Bloco #%d minerado — tipo=%s empresa=%s nonce=%d hash=%s\n",
-		bloco.Index, tx.Tipo, tx.EmpresaID, bloco.Nonce, bloco.Hash[:12])
+	log.Printf("[LEDGER] ⛏  Bloco #%d minerado — tipo=%s zona=%s nonce=%d hash=%s\n",
+		bloco.Index, tx.Tipo, tx.ZonaID, bloco.Nonce, bloco.Hash[:12])
 
 	return bloco, nil
 }
@@ -124,23 +121,57 @@ func (c *Chain) AceitarBlocoExterno(bloco Bloco) error {
 		}
 	}
 
-	// 3. Aceita
+	// 3. Validação de Regras de Negócio (Transação)
+	tx := bloco.Tx
+	switch tx.Tipo {
+	case TxGenesis:
+		// Não aceitamos blocos gênesis externos para evitar que alguém "crie" dinheiro
+		return fmt.Errorf("tentativa de injetar bloco GÊNESIS externo negada")
+
+	case TxPagamento:
+		// Verifica se a zona tinha saldo SUFICIENTE antes deste bloco
+		// (Usamos uma versão interna do Saldo que não tenta pegar o Lock novamente)
+		saldo := c.calcularSaldoSemLock(tx.ZonaID)
+		if saldo < tx.Creditos {
+			return fmt.Errorf("zona %s tentou gastar %d mas tinha apenas %d", tx.ZonaID, tx.Creditos, saldo)
+		}
+	}
+
+	// 4. Aceita
 	c.Blocos = append(c.Blocos, bloco)
-	log.Printf("[LEDGER] ✔ Bloco externo #%d aceito — tipo=%s empresa=%s minerador=%s\n",
-		bloco.Index, bloco.Tx.Tipo, bloco.Tx.EmpresaID, bloco.Minerador)
+	log.Printf("[LEDGER] ✔ Bloco externo #%d aceito — tipo=%s zona=%s minerador=%s\n",
+		bloco.Index, bloco.Tx.Tipo, bloco.Tx.ZonaID, bloco.Minerador)
 	return nil
 }
 
-// SaldoEmpresa percorre toda a chain e calcula o saldo atual de uma empresa.
+// calcularSaldoSemLock é a lógica de saldo sem o mutex (usada internamente)
+func (c *Chain) calcularSaldoSemLock(zonaID string) int {
+	saldo := 0
+	for _, bloco := range c.Blocos {
+		tx := bloco.Tx
+		if tx.ZonaID != zonaID {
+			continue
+		}
+		switch tx.Tipo {
+		case TxGenesis:
+			saldo += tx.Creditos
+		case TxPagamento:
+			saldo -= tx.Creditos
+		}
+	}
+	return saldo
+}
+
+// SaldoZona percorre toda a chain e calcula o saldo atual de uma zona.
 // Gênesis soma, PAGAMENTO subtrai, LAUDO não altera saldo (só registra).
-func (c *Chain) SaldoEmpresa(empresaID string) int {
+func (c *Chain) SaldoZona(zonaID string) int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	saldo := 0
 	for _, bloco := range c.Blocos {
 		tx := bloco.Tx
-		if tx.EmpresaID != empresaID {
+		if tx.ZonaID != zonaID {
 			continue
 		}
 		switch tx.Tipo {
@@ -154,9 +185,9 @@ func (c *Chain) SaldoEmpresa(empresaID string) int {
 	return saldo
 }
 
-// TemSaldo retorna true se a empresa tiver créditos suficientes para uma requisição.
-func (c *Chain) TemSaldo(empresaID string) bool {
-	return c.SaldoEmpresa(empresaID) >= CustoPorRequisicao
+// TemSaldo retorna true se a zona tiver créditos suficientes para uma requisição.
+func (c *Chain) TemSaldo(zonaID string) bool {
+	return c.SaldoZona(zonaID) >= CustoPorRequisicao
 }
 
 // ValidarChain percorre a chain inteira verificando cada bloco.

@@ -114,7 +114,7 @@ services:
   drone-leste-1:
     build:
       context: .
-      dockerfile: drones/
+      dockerfile: drones/Dockerfile
     environment:
       - DRONE_ID=LESTE-drone-1
       - SERVIDOR=peer3:9090

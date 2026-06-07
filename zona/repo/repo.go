@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net"
+	"pbl-2/zona/ledger"
 	"pbl-2/zona/models"
 	"pbl-2/zona/ricart"
 	"sync"
@@ -306,13 +307,25 @@ func TentarAlocarDaFila() {
 		return
 	}
 
-	// 3. Pega a requisição mais importante da fila
-	req, temReq := ProximaRequisicao()
-	if !temReq {
+	// 3. Pega a requisição mais importante da fila (espiamos sem remover ainda)
+	FilaMutex.Lock()
+	if RequisicoesPendentes.Len() == 0 {
+		FilaMutex.Unlock()
+		return
+	}
+	proximaReq := (*RequisicoesPendentes)[0]
+	FilaMutex.Unlock()
+
+	// 3.5 Verifica se a zona solicitante tem saldo para pelo menos uma missão
+	// Se não tiver, não removemos da fila (ela fica "salva"), mas também não
+	// iniciamos o Ricart para não desperdiçar tráfego.
+	if !ledger.Instancia.TemSaldo(proximaReq.ZonaID) {
 		return
 	}
 
-	// 4. Inicia o pedido!
+	// 4. Se tem saldo e drone, agora sim removemos e iniciamos
+	req, _ := ProximaRequisicao()
+
 	log.Printf("[FILA] ► Disparando Ricart — prioridade=%d (%s)\n", req.Prioridade, req.Ocorrencia)
 	RicartInstance.IniciarRequisicao(drone.ID, req)
 	log.Printf("[FILA] ✔ Drone selecionado: %s\n", drone.ID)

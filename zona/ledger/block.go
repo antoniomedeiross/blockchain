@@ -12,16 +12,16 @@ import (
 type TipoTransacao string
 
 const (
-	TxPagamento TipoTransacao = "PAGAMENTO"  // empresa gastou créditos para requisitar um drone
+	TxPagamento TipoTransacao = "PAGAMENTO"  // zona gastou créditos para requisitar um drone
 	TxLaudo     TipoTransacao = "LAUDO"       // drone concluiu missão — laudo de operação
-	TxGenesis   TipoTransacao = "GENESIS"     // bloco inicial com saldo de cada empresa
+	TxGenesis   TipoTransacao = "GENESIS"     // bloco inicial com saldo de cada zona
 )
 
 // Transacao é o payload dentro de cada bloco.
 // Um bloco tem exatamente uma transação para simplificar o encadeamento.
 type Transacao struct {
 	Tipo      TipoTransacao `json:"tipo"`
-	EmpresaID string        `json:"empresa_id"`          // quem pagou / quem foi atendido
+	ZonaID    string        `json:"zona_id"`             // quem pagou / quem foi atendido
 	Creditos  int           `json:"creditos"`            // quantos créditos foram gastos (negativo = débito)
 	DroneID   string        `json:"drone_id,omitempty"`  // drone envolvido
 	Ocorrencia string       `json:"ocorrencia,omitempty"` // descrição do evento (para laudos)
@@ -53,7 +53,7 @@ func calcularHash(b Bloco) string {
 		b.Index,
 		b.Timestamp.UnixNano(),
 		b.Tx.Tipo,
-		b.Tx.EmpresaID,
+		b.Tx.ZonaID,
 		b.Tx.Creditos,
 		b.Tx.DroneID,
 		b.Tx.Ocorrencia,
