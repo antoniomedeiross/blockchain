@@ -33,9 +33,17 @@ type Chain struct {
 	ZonaID string
 }
 
-// NovaChain cria uma chain vazia e adiciona o bloco gênesis com os saldos iniciais.
-func NovaChain(zonaID string) *Chain {
+// NovaChain cria uma chain. Se blocosPersistidos não for nulo, usa eles.
+// Caso contrário, adiciona o bloco gênesis com os saldos iniciais.
+func NovaChain(zonaID string, blocosPersistidos []Bloco) *Chain {
 	c := &Chain{ZonaID: zonaID}
+	
+	if len(blocosPersistidos) > 0 {
+		c.Blocos = blocosPersistidos
+		log.Printf("[LEDGER] ✔ Chain carregada do arquivo com %d blocos\n", len(c.Blocos))
+		return c
+	}
+
 	c.Blocos = []Bloco{}
 
 	// Tempo base determinístico para os blocos gênesis (garante que todos os peers gerem o mesmo hash de origem)
@@ -71,6 +79,10 @@ func NovaChain(zonaID string) *Chain {
 
 		bloco = Minerar(bloco)
 		c.Blocos = append(c.Blocos, bloco)
+
+		// Salva o bloco gênesis no arquivo (apenas se estivermos criando a chain agora)
+		SalvarBloco(bloco)
+
 		log.Printf("[LEDGER] ⛏  Gênesis determinístico — zona=%s saldo=%d hash=%s\n",
 			zona, saldo, bloco.Hash[:12])
 	}

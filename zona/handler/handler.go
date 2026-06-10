@@ -233,19 +233,52 @@ func ProcessarConexoes(conn net.Conn) {
 
 			
 		case "SYNC_REQUEST":
-			// Peer conectou e quer o estado atual dos drones
+			// Peer conectou e quer o estado atual dos drones E possivelmente blocos da ledger
+			dadosJSON, _ := json.Marshal(mensagem.Dados)
+			var payload map[string]interface{}
+			json.Unmarshal(dadosJSON, &payload)
+
+			peerChainSize := 0
+			if val, ok := payload["chain_size"].(float64); ok {
+				peerChainSize = int(val)
+			}
+
+			// 1. Enviar Drones
 			drones := repo.BuscarDrones()
-			resposta := models.Mensagem{
+			respostaDrones := models.Mensagem{
 				Tipo:      "SYNC_RESPONSE",
 				De:        getZonaAtual(),
 				Para:      peerZona,
 				Dados:     drones,
 				Timestamp: time.Now(),
 			}
-			if data, err := json.Marshal(resposta); err == nil {
+			if data, err := json.Marshal(respostaDrones); err == nil {
 				conn.Write(append(data, '\n'))
 			}
-			log.Printf("[SYNC] → Enviando estado para %s: %d drone(s)\n", peerZona, len(drones))
+
+			// 2. Enviar blocos que o peer não tem (Catch-up)
+			if ledger.Instancia != nil {
+				meuTamanho := ledger.Instancia.Tamanho()
+				if meuTamanho > peerChainSize {
+					log.Printf("[SYNC] → Peer %s está atrasado (%d vs %d). Enviando %d bloco(s).\n",
+						peerZona, peerChainSize, meuTamanho, meuTamanho-peerChainSize)
+					
+					fullChain := ledger.Instancia.Snapshot()
+					blocosFaltantes := fullChain[peerChainSize:]
+					
+					for _, b := range blocosFaltantes {
+						msgBloco := models.Mensagem{
+							Tipo:  "BLOCO",
+							De:    getZonaAtual(),
+							Dados: b,
+						}
+						if data, err := json.Marshal(msgBloco); err == nil {
+							conn.Write(append(data, '\n'))
+						}
+					}
+				}
+			}
+			log.Printf("[SYNC] → Enviado estado para %s: %d drone(s)\n", peerZona, len(drones))
 
 		case "SYNC_RESPONSE":
 			// Recebi o estado completo de outro peer, atualizo minha lista
@@ -332,12 +365,23 @@ func ProcessarConexoes(conn net.Conn) {
 				continue
 			}
 			log.Printf("[FAILOVER] ✔ Drone %s concluiu missão em %s — Ricart liberado\n", ack.DroneID, peerZona)
+			
 			repo.RicartInstance.Liberar(ack.DroneID)
+			
 			// Tenta puxar a próxima requisição da fila depois que um drone fica livre
 			go func() {
 				time.Sleep(300 * time.Millisecond)
 				repo.TentarAlocarDaFila()
 			}()
+
+		case "FORCE_RELEASE":
+			// Caso de emergência: se uma zona reiniciar, ela pode enviar isso para
+			// avisar que não está mais segurando nenhum drone.
+			dadosJSON, _ := json.Marshal(mensagem.Dados)
+			var droneID string
+			json.Unmarshal(dadosJSON, &droneID)
+			log.Printf("[RICART] ⚠ FORCE_RELEASE recebido de %s para drone %s\n", mensagem.De, droneID)
+			repo.RicartInstance.ReceberRelease(mensagem.De, droneID)
 
 		default:
 			log.Printf("[HANDLER] ⚠ Tipo de mensagem desconhecido: %s\n", mensagem.Tipo)

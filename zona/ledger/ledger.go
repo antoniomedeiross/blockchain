@@ -12,10 +12,13 @@ var Instancia *Chain
 // a todos os peers via TCP. Evita dependência circular com o package repo.
 var PropagaBloco func(bloco Bloco)
 
-// IniciarLedger cria a chain com o bloco gênesis e guarda na variável global.
-// Deve ser chamado uma vez no main, antes de aceitar conexões.
+// IniciarLedger cria a chain carregando dados do arquivo ou gerando novo gênesis.
 func IniciarLedger(zonaID string) {
-	Instancia = NovaChain(zonaID)
+	blocos, err := CarregarLedger()
+	if err != nil {
+		log.Printf("[LEDGER] ⚠ Falha ao carregar arquivo ledger: %v. Iniciando nova.\n", err)
+	}
+	Instancia = NovaChain(zonaID, blocos)
 }
 
 // RegistrarPagamento debita créditos de uma zona e adiciona o bloco à chain.
@@ -48,6 +51,9 @@ func RegistrarPagamento(zonaID string, droneID string, ocorrencia string, zona s
 	if err != nil {
 		return err
 	}
+
+	// Salva no arquivo local
+	SalvarBloco(bloco)
 
 	// Propaga o bloco minerado para los peers
 	if PropagaBloco != nil {
@@ -83,6 +89,9 @@ func RegistrarLaudo(zonaID string, droneID string, ocorrencia string, zona strin
 		return
 	}
 
+	// Salva no arquivo local
+	SalvarBloco(bloco)
+
 	if PropagaBloco != nil {
 		go PropagaBloco(bloco)
 	}
@@ -98,7 +107,10 @@ func AceitarBlocoExterno(bloco Bloco) {
 	}
 	if err := Instancia.AceitarBlocoExterno(bloco); err != nil {
 		log.Printf("[LEDGER] ✗ Bloco externo rejeitado: %v\n", err)
+		return
 	}
+	// Salva o bloco externo aceito no arquivo local
+	SalvarBloco(bloco)
 }
 
 // ConsultarSaldo retorna o saldo atual de uma zona.

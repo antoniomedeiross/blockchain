@@ -110,10 +110,17 @@ func conectarAosPeers(peers []string) {
 
 				log.Printf("[P2P] ✔ Identificado em %s\n", addr)
 
-				// 3. Pedir estado e lista dos drones
+				// 3. Pedir estado dos drones e SINCRONIZAR LEDGER
+				minhaZona = getZona()
+				meuTamanho := 0
+				if ledger.Instancia != nil {
+					meuTamanho = ledger.Instancia.Tamanho()
+				}
+
 				syncReq := models.Mensagem{
 					Tipo:      "SYNC_REQUEST",
 					De:        minhaZona,
+					Dados:     map[string]interface{}{"chain_size": meuTamanho},
 					Timestamp: time.Now(),
 				}
 				data, _ := json.Marshal(syncReq)
@@ -181,6 +188,12 @@ func conectarAosPeers(peers []string) {
 							repo.AtualizarDroneRemoto(d)
 						}
 						log.Printf("[SYNC] ✔ Sincronizado com %s: %d drone(s) no estado\n", addr, len(drones))
+
+						// Tenta processar fila local após sincronizar drones
+						go func() {
+							time.Sleep(1 * time.Second)
+							repo.TentarAlocarDaFila()
+						}()
 
 					// DRONE_UPDATE é enviado por um peer quando um drone muda de estado (alocado, liberado, offline)
 					case "DRONE_UPDATE":
@@ -438,6 +451,15 @@ func iniciarHTTP() {
 		}
 
 		json.NewEncoder(w).Encode(status)
+	})
+
+	// /ledger — retorna o arquivo bruto para auditoria
+	mux.HandleFunc("/ledger", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		
+		// Serve o arquivo ledger.json diretamente
+		http.ServeFile(w, r, "ledger.json")
 	})
 
 	porta := os.Getenv("HTTP_PORT")
