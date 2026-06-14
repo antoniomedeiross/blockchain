@@ -225,6 +225,9 @@ func ProcessarConexoes(conn net.Conn) {
 
 			log.Printf("[MISSÃO] ◄ [%s] DESPACHAR drone físico %s\n", peerZona, missao.DroneID)
 
+			// REGISTRA QUEM PEDIU O DRONE para poder notificar na volta
+			repo.RegistrarServico(missao.DroneID, mensagem.De)
+
 			// Agora sim, o conn.Write vai funcionar, porque o drone tá conectado aqui!
 			data, _ := json.Marshal(missao)
 			if !repo.EnviarParaDrone(missao.DroneID, data) {
@@ -459,14 +462,21 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 		// Quando o drone conclui a missão, precisamos atualizar o estado local, notificar os peers e liberar o Ricart
 		case "MISSAO_CONCLUIDA":
 			log.Printf("[DRONE] ✔ Drone %s concluiu missão — liberando\n", droneID)
-			// Atualiza estado localmente
+			
+			// Verifica se FUI EU que iniciei o Ricart para este drone
+			souORequisitante := repo.EstaSendoGerenciado(droneID)
+			
+			// Se NÃO fui eu, verifica quem foi (via DronesServindo)
+			zonaRequisitante := repo.ObterSolicitante(droneID)
+			
+			// Limpa o estado local
 			repo.RemoverGerenciamento(droneID)
+			repo.FinalizarServico(droneID)
 
 			repo.DroneMutex.Lock()
-			// Verifica se o drone é da própria zona ou de failover (reconectou aqui, mas a base é outra)
 			d := repo.Drones[droneID]
 
-			// REGISTRO DE LAUDO (IMUTABILIDADE E AUDITORIA)
+			// REGISTRO DE LAUDO
 			if d.MissaoAtual != nil {
 				ledger.RegistrarLaudo(d.MissaoAtual.ZonaID, droneID, d.MissaoAtual.Ocorrencia, d.ZonaAtual)
 			}
@@ -474,33 +484,32 @@ func processarDrone(droneID string, conn net.Conn, leitor *bufio.Reader) {
 			d.Status = models.StatusLivre
 			d.MissaoAtual = nil
 
-			// Se o drone é de failover, ele vai estar conectado aqui, mas a zona base é outra. Nesse caso, não atualizamos ZonaAtual
 			minhaZona := getZonaAtual()
-			droneELocal := d.ZonaBase == minhaZona
-			zonaBase := d.ZonaBase
+			droneEBandeiraLocal := d.ZonaBase == minhaZona
 
-			if droneELocal {
-				// Drone da própria zona: retorna para base normalmente
+			if droneEBandeiraLocal {
 				d.ZonaAtual = d.ZonaBase
 			} else {
-				// Drone em failover: continua na zona atual (está conectado fisicamente aqui)
 				d.ZonaAtual = minhaZona
 			}
-			// Atualiza o mapa de drones
 			repo.Drones[droneID] = d
 			repo.DroneMutex.Unlock()
 
-			// Avisa todos os peers que o drone está livre
+			// Avisa todos os peers
 			repo.BroadcastFn(d)
 
-			if droneELocal {
-				// Drone local -> libera o Ricart normalmente
+			if souORequisitante {
+				// Fui eu que pedi -> libero meu Ricart localmente (independente da base do drone)
+				log.Printf("[RICART] 🔓 Liberando Ricart local para drone %s\n", droneID)
 				repo.RicartInstance.Liberar(droneID)
+			} else if zonaRequisitante != "" {
+				// Outro peer pediu -> envio ACK para ele liberar o Ricart DELE
+				log.Printf("[FAILOVER] → Notificando requisitante %s para liberar Ricart do drone %s\n", zonaRequisitante, droneID)
+				repo.NotificarMissaoConcluida(zonaRequisitante, droneID)
 			} else {
-				// Drone de failover: a zona base foi quem iniciou o Ricart,
-				// então ela que deve chamar Liberar(). Enviamos MISSAO_CONCLUIDA_ACK para ela.
-				log.Printf("[FAILOVER] → Notificando zona base %s para liberar Ricart do drone %s\n", zonaBase, droneID)
-				repo.NotificarMissaoConcluida(zonaBase, droneID)
+				// Caso de fallback: se não temos registro de quem pediu (ex: reiniciou), tenta notificar a base
+				log.Printf("[FAILOVER] ⚠ Solicitante desconhecido, tentando base %s para drone %s\n", d.ZonaBase, droneID)
+				repo.NotificarMissaoConcluida(d.ZonaBase, droneID)
 			}
 
 			// Tenta puxar a próxima requisição da fila

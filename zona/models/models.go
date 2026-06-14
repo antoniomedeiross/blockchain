@@ -23,6 +23,7 @@ type Requisicao struct {
     Ocorrencia string    `json:"ocorrencia"`
     Prioridade int       `json:"prioridade"`
     Timestamp  time.Time `json:"timestamp"`
+    Pago       bool      `json:"pago"` // indica se esta missão já foi debitada do ledger
 }
 
 // STRUCT DO DRONE

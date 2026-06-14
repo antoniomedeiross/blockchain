@@ -170,6 +170,35 @@ func ListarGerenciados() []string {
 	return lista
 }
 
+// DronesServindo rastreia qual zona solicitou a missão atual de um drone conectado aqui.
+// droneID -> zonaSolicitante
+var DronesServindo = make(map[string]string)
+var DronesServindoMutex sync.RWMutex
+
+func RegistrarServico(droneID string, zonaSolicitante string) {
+	DronesServindoMutex.Lock()
+	DronesServindo[droneID] = zonaSolicitante
+	DronesServindoMutex.Unlock()
+}
+
+func ObterSolicitante(droneID string) string {
+	DronesServindoMutex.RLock()
+	defer DronesServindoMutex.RUnlock()
+	return DronesServindo[droneID]
+}
+
+func FinalizarServico(droneID string) {
+	DronesServindoMutex.Lock()
+	delete(DronesServindo, droneID)
+	DronesServindoMutex.Unlock()
+}
+
+func EstaSendoGerenciado(droneID string) bool {
+	DronesGeridosMutex.RLock()
+	defer DronesGeridosMutex.RUnlock()
+	return DronesGerenciados[droneID]
+}
+
 // repo/drones.go
 var BroadcastFn func(drone models.Drone)
 

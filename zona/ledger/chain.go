@@ -119,21 +119,34 @@ func (c *Chain) AceitarBlocoExterno(bloco Bloco) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// 1. Valida o hash e o PoW do bloco recebido
+	// 1. Verifica se já temos este bloco (pelo índice)
+	if bloco.Index < len(c.Blocos) {
+		blocoExistente := c.Blocos[bloco.Index]
+		if blocoExistente.Hash == bloco.Hash {
+			return nil // Já temos o bloco, ignora silenciosamente
+		}
+		return fmt.Errorf("conflito no bloco #%d: hash recebido %s != local %s", 
+			bloco.Index, bloco.Hash[:12], blocoExistente.Hash[:12])
+	}
+
+	// 2. Valida o hash e o PoW do bloco recebido
 	if !bloco.Validar() {
 		return fmt.Errorf("bloco #%d inválido: hash não bate ou PoW insuficiente", bloco.Index)
 	}
 
-	// 2. Verifica encadeamento: HashAnterior deve ser o hash do topo atual
+	// 3. Verifica encadeamento: HashAnterior deve ser o hash do topo atual
 	if len(c.Blocos) > 0 {
 		topo := c.Blocos[len(c.Blocos)-1]
+		if bloco.Index != topo.Index+1 {
+			return fmt.Errorf("bloco #%d fora de ordem: topo atual é #%d", bloco.Index, topo.Index)
+		}
 		if bloco.HashAnterior != topo.Hash {
 			return fmt.Errorf("bloco #%d fora de ordem: esperado hash_anterior=%s, recebido=%s",
 				bloco.Index, topo.Hash[:12], bloco.HashAnterior[:12])
 		}
 	}
 
-	// 3. Validação de Regras de Negócio (Transação)
+	// 4. Validação de Regras de Negócio (Transação)
 	tx := bloco.Tx
 	switch tx.Tipo {
 	case TxGenesis:
@@ -142,14 +155,13 @@ func (c *Chain) AceitarBlocoExterno(bloco Bloco) error {
 
 	case TxPagamento:
 		// Verifica se a zona tinha saldo SUFICIENTE antes deste bloco
-		// (Usamos uma versão interna do Saldo que não tenta pegar o Lock novamente)
 		saldo := c.calcularSaldoSemLock(tx.ZonaID)
 		if saldo < tx.Creditos {
 			return fmt.Errorf("zona %s tentou gastar %d mas tinha apenas %d", tx.ZonaID, tx.Creditos, saldo)
 		}
 	}
 
-	// 4. Aceita
+	// 5. Aceita
 	c.Blocos = append(c.Blocos, bloco)
 	log.Printf("[LEDGER] ✔ Bloco externo #%d aceito — tipo=%s zona=%s minerador=%s\n",
 		bloco.Index, bloco.Tx.Tipo, bloco.Tx.ZonaID, bloco.Minerador)

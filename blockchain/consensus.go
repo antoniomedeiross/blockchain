@@ -88,7 +88,7 @@ func ProposeAndMine(
 	log.Printf("[CONSENSUS] 🗳 Propondo bloco #%d (%s) - hash: %s\n", bloco.Index, tipo, bloco.Hash[:12])
 
 	enviarParaTodos(models.Mensagem{
-		Tipo: models.TipoProposeBlock,
+		Tipo: models.,
 		De:   minhaZona,
 		Dados: models.MensagemBloco{
 			Bloco: bloco,

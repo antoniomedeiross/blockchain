@@ -535,7 +535,7 @@ func main() {
 			repo.DroneMutex.Unlock()
 
 			// PAGAMENTO NA ALOCAÇÃO: Desconta o saldo apenas quando o drone for efetivamente despachado
-			if reqAtual != nil {
+			if reqAtual != nil && !reqAtual.Pago {
 				err := ledger.RegistrarPagamento(reqAtual.ZonaID, droneID, reqAtual.Ocorrencia, reqAtual.Zona)
 				if err != nil {
 					log.Printf("[LEDGER] ✗ Falha no pagamento na alocação para %s: %v\n", reqAtual.ZonaID, err)
@@ -545,6 +545,10 @@ func main() {
 					go repo.TentarAlocarDaFila()
 					return
 				}
+				// Marca como paga para não cobrar de novo se o drone cair
+				reqAtual.Pago = true
+			} else if reqAtual != nil && reqAtual.Pago {
+				log.Printf("[LEDGER] ℹ Missão '%s' já paga anteriormente (reuso de despacho)\n", reqAtual.Ocorrencia)
 			}
 
 			missao := models.MensagemDrone{
@@ -577,16 +581,16 @@ func main() {
 				log.Printf("[MISSÃO] ► Missão enviada diretamente para %s\n", droneID)
 				// Liberar é chamado quando MISSAO_CONCLUIDA chegar via processarDrone
 
-				// watchdog: se o drone não concluir em 6s, libera
+				// watchdog: se o drone não concluir em 60s, libera
 				go func() {
-					time.Sleep(6 * time.Second)
+					time.Sleep(60 * time.Second)
 					repo.DroneMutex.RLock()
 					d := repo.Drones[droneID]
 					repo.DroneMutex.RUnlock()
 
 					// Se o drone ainda estiver ocupado e com a mesma missão, considera que ele falhou ou perdeu conexão — libera e tenta alocar outro da fila
 					if d.Status == models.StatusOcupado && d.MissaoAtual != nil {
-						log.Printf("[WATCHDOG] ⚠ Drone %s não concluiu missão em 6s — liberando\n", droneID)
+						log.Printf("[WATCHDOG] ⚠ Drone %s não concluiu missão em 60s — liberando\n", droneID)
 						repo.DroneMutex.Lock()
 						missaoPerdida := d.MissaoAtual
 						d.MissaoAtual = nil
