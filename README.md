@@ -1,465 +1,325 @@
-# PBL-2 — Sistema Distribuído de Coordenação de Frotas de Drones
+# PBL-3 — Economia e Auditoria de Guerra
 
-Sistema distribuído P2P para coordenação de frotas de drones em zonas geográficas, implementado em Go. Desenvolvido como projeto do MI de Concorrência e Conectividade — UEFS.
+Sistema distribuído P2P de coordenação de drones com blockchain própria para economia de créditos e auditoria imutável de operações. Desenvolvido como Problema 3 do MI de Concorrência e Conectividade — UEFS.
+
+> Este projeto estende o PBL-2 (exclusão mútua com Ricart-Agrawala) com uma camada de ledger distribuído: cada zona mantém uma cópia local da chain, pagamentos são confirmados via consenso 2/3 entre peers, e todo laudo de missão é registrado de forma imutável.
 
 ---
 
 ## Sumário
 
-- [Visão Geral](#visão-geral)
+- [Visão geral](#visão-geral)
+- [Diferenças em relação ao PBL-2](#diferenças-em-relação-ao-pbl-2)
 - [Arquitetura](#arquitetura)
-- [Algoritmo de Ricart-Agrawala](#algoritmo-de-ricart-agrawala)
-- [Estrutura do Projeto](#estrutura-do-projeto)
-- [Pré-requisitos](#pré-requisitos)
-- [Executando com Docker Compose](#executando-com-docker-compose)
-- [Executando Manualmente com Docker](#executando-manualmente-com-docker)
-- [Testes](#testes)
-- [API HTTP](#api-http)
-- [Protocolo de Mensagens TCP](#protocolo-de-mensagens-tcp)
-- [Variáveis de Ambiente](#variáveis-de-ambiente)
+- [Blockchain](#blockchain)
+- [Fluxo de consenso](#fluxo-de-consenso)
+- [Validação de bloco recebido](#validação-de-bloco-recebido)
+- [Endpoints HTTP](#endpoints-http)
+- [Execução com Docker](#execução-com-docker)
+- [Variáveis de ambiente](#variáveis-de-ambiente)
+- [Estrutura de pacotes](#estrutura-de-pacotes)
+- [Testes manuais relevantes](#testes-manuais-relevantes)
 
 ---
 
-## Visão Geral
+## Visão geral
 
-O sistema simula um ambiente de monitoramento distribuído onde um ou mais sensores detectam ocorrências em três zonas geográficas (**NORTE**, **SUL**, **LESTE**) e solicitam o despacho de drones para atendimento. Cada zona é gerenciada por um servidor peer que se comunica diretamente com os demais via TCP, sem servidor central.
+Três zonas (NORTE, SUL, LESTE) operam como nós independentes de uma rede P2P. Cada nó mantém:
 
-A coordenação do acesso exclusivo a drones compartilhados entre zonas é garantida pelo algoritmo de exclusão mútua distribuída de **Ricart-Agrawala**, com desempate por prioridade da ocorrência, timestamp físico e relógio de Lamport.
+- Uma cópia local da blockchain (`ledger.json`)
+- Uma carteira de créditos derivada do histórico da chain (nunca de variável local)
+- Os drones físicos registrados nessa zona
+
+Requisitar um drone de escolta custa **10 créditos**. Cada zona começa com **200 créditos** emitidos no bloco gênesis. O pagamento só é confirmado — e o drone só é despachado — após quorum de 2/3 dos peers aceitarem o bloco via votação TCP.
+
+---
+
+## Diferenças em relação ao PBL-2
+
+| Aspecto | PBL-2 | PBL-3 |
+|---|---|---|
+| Controle de recursos | Ricart-Agrawala (exclusão mútua) | Ricart-Agrawala **+** blockchain de pagamentos |
+| Registro de operações | Sem persistência de auditoria | Laudo imutável em bloco ao fim de cada missão |
+| Economia | Sem créditos | 200 créditos/zona, custo 10/requisição |
+| Consenso | Quorum de REPLY (Ricart) | Ricart para alocação **+** votação 2/3 para blocos |
+| Tolerância a adulteração | Não aplicável | Encadeamento SHA-256 + PoW detecta alterações |
+| Auditabilidade | Nenhuma | Qualquer peer expõe `/ledger` e `/validate` |
+
+O Ricart-Agrawala foi **mantido intacto** para garantir que dois peers não despachem o mesmo drone simultaneamente. A blockchain não substitui esse mecanismo — ela registra e valida o pagamento que já passou pela seção crítica.
 
 ---
 
 ## Arquitetura
 
+![Arquitetura P2P](img/diagramas/arquitetura-p2p.png)
 
+Cada zona é um peer autônomo com:
 
+- **Chave Ed25519** para assinar mensagens de controle
+- **Cópia local da chain** persistida em `ledger.json`
+- **Conexão TCP bidirecional** com os outros dois peers
 
+A comunicação de consenso usa os mesmos canais TCP já existentes no PBL-2. Dois novos tipos de mensagem foram adicionados:
 
-```mermaid
-flowchart LR
+| Mensagem | Direção | Propósito |
+|---|---|---|
+| `BLOCO_PROPOSTA` | proponente → todos os peers | Peer minerou um bloco e pede voto |
+| `VOTO_CONSENSO` | peer votante → proponente | Aceita ou rejeita o bloco candidato |
+| `BLOCO` | proponente → todos os peers | Bloco confirmado para sincronização final |
 
-    %% =========================
-    %% REDE PRINCIPAL
-    %% =========================
-    subgraph Rede_Docker["Rede Docker (pbl-network)"]
-
-        direction TB
-
-        %% =========================
-        %% PEERS
-        %% =========================
-        subgraph Peers["Peers"]
-            direction LR
-
-            P1["peer1<br/><b>NORTE</b><br/>TCP :9090<br/>HTTP :8081"]
-            P2["peer2<br/><b>SUL</b><br/>TCP :9091<br/>HTTP :8082"]
-            P3["peer3<br/><b>LESTE</b><br/>TCP :9092<br/>HTTP :8083"]
-        end
-
-        %% Comunicação P2P
-        P1 <-->|TCP| P2
-        P2 <-->|TCP| P3
-        P3 <-->|TCP| P1
-
-        %% =========================
-        %% SENSORES
-        %% =========================
-        subgraph Sensores["Sensores (TCP)"]
-            direction TB
-
-            SN1["sensor-norte-1"]
-            SS1["sensor-sul-1"]
-            SL1["sensor-leste-1"]
-        end
-
-        %% =========================
-        %% DRONES
-        %% =========================
-        subgraph Drones["Drones (TCP)"]
-            direction TB
-
-            DN1["drone-norte-1"]
-            DN2["drone-sul-1"]
-            DN3["drone-leste-1"]
-        end
-
-        %% Ligações Sensores
-        SN1 --> P1
-        SS1 --> P2
-        SL1 --> P3
-
-        %% Ligações Drones
-        DN1 --> P1
-        DN2 --> P2
-        DN3 --> P3
-
-    end
-
-    %% =========================
-    %% ESTILOS
-    %% =========================
-
-    style Rede_Docker fill:#f8f9fa,stroke:#333,stroke-width:2px
-    style Peers fill:#fff3e0,stroke:#ef6c00,stroke-width:1.5px
-    style Sensores fill:#e1f5fe,stroke:#0288d1,stroke-width:1.5px
-    style Drones fill:#e8f5e9,stroke:#388e3c,stroke-width:1.5px
-
-    style P1 fill:#ffe0b2
-    style P2 fill:#ffe0b2
-    style P3 fill:#ffe0b2
-```
-Cada peer mantém:
-
-- Uma **fila de prioridade** (max-heap) de requisições pendentes de despacho de drone.
-- Um **mapa de drones** replicado entre os peers via mensagens de sincronização.
-- Uma instância do **algoritmo de Ricart-Agrawala** para exclusão mútua distribuída.
-- Conexões TCP persistentes com todos os outros peers (full mesh).
+Não existe nó mestre, coordenador central ou banco de dados compartilhado. Se um peer cair, os outros dois continuam operando normalmente — o peer que voltar faz sync automático via `SYNC_REQUEST`.
 
 ---
 
-## Algoritmo de Ricart-Agrawala
+## Blockchain
 
-Quando uma zona precisa alocar um drone de outra zona (failover), ela inicia o protocolo de exclusão mútua:
+![Estrutura dos Blocos](img/diagramas/estrutura-blocos.png)
 
-1. **REQUEST** — a zona envia uma mensagem `REQUEST` a todos os peers, carregando seu relógio de Lamport, prioridade da ocorrência e timestamp físico.
-2. **REPLY** — cada peer responde imediatamente se não disputa o mesmo drone ou se a requisição recebida tem prioridade maior; caso contrário, enfileira o REPLY até liberar o recurso.
-3. **Seção crítica** — ao receber REPLYs de todos os peers ativos, a zona aloca o drone e executa a missão.
-4. **RELEASE** — ao final da missão, a zona envia `RELEASE` a todos os peers e libera os REPLYs enfileirados.
+### Bloco gênesis
 
-**Critérios de desempate** (do mais para o menos prioritário):
+Gerado deterministicamente por todos os peers na inicialização (timestamp fixo `2025-01-01T00:00:00Z`, ordem NORTE → SUL → LESTE). Todos os nós produzem hashes idênticos, garantindo que a chain nunca divirja desde o início.
 
-1. Prioridade da ocorrência (maior vence)
-2. Timestamp físico da requisição (menor vence)
-3. Relógio de Lamport (menor vence)
-4. Nome da zona (lexicográfico)
+Cada zona recebe **200 créditos** como emissão inicial.
 
-Desconexões de peers durante o protocolo são tratadas via `NotificarPeerOffline`, que concede REPLY implícito ao peer desconectado para evitar deadlock.
+### Tipos de transação
+
+| Tipo | Quando é criado | Altera saldo? |
+|---|---|---|
+| `GENESIS` | Na inicialização, uma vez | Sim — emissão inicial |
+| `PAGAMENTO` | Ao alocar drone (dentro do Ricart) | Sim — débito de 10 créditos |
+| `LAUDO` | Ao receber `MISSAO_CONCLUIDA` | Não — apenas auditoria |
+
+### Campos do bloco
+
+```
+Index          — posição na chain (0, 1, 2...)
+Timestamp      — momento da mineração
+Transacao      — tipo, zona, drone, créditos, ocorrência
+HashAnterior   — hash do bloco anterior (encadeamento)
+Hash           — SHA-256 de todos os campos acima + Nonce
+Nonce          — resultado do Proof-of-Work
+Minerador      — zona que minerou este bloco
+```
+
+### Proof-of-Work
+
+Dificuldade 2 (hash deve começar com `"00"`). Em média ~256 iterações por bloco — suficiente para demonstrar o mecanismo sem impacto de latência perceptível.
+
+### Saldo
+
+O saldo de cada zona é **sempre recalculado percorrendo toda a chain** (`SaldoZona`). Não existe variável de saldo separada — isso garante consistência total com o histórico registrado.
 
 ---
 
-## Estrutura do Projeto
+## Fluxo de consenso
 
-```
-pbl-2/
-├── zona/
-│   ├── server/
-│   │   ├── server.go        # Entrypoint do peer: TCP listener, HTTP server, conexão P2P
-│   │   └── Dockerfile
-│   ├── handler/
-│   │   └── handler.go       # Processamento de mensagens TCP recebidas
-│   ├── repo/
-│   │   └── repo.go          # Estado global: peers, drones, fila de prioridade
-│   ├── ricart/
-│   │   └── ricart.go        # Implementação do algoritmo de Ricart-Agrawala
-│   └── models/
-│       └── models.go        # Structs compartilhadas (Drone, Requisicao, MensagemRicart, etc.)
-├── drones/
-│   ├── main.go              # Cliente drone: conecta ao peer, executa missões
-│   └── Dockerfile
-├── sensores/
-│   ├── sensor.go            # Cliente sensor: gera ocorrências aleatórias com prioridade
-│   └── Dockerfile
-├── frontend/
-│   ├── index.html           # Dashboard de monitoramento do sistema
-│   ├── entrypoint.sh
-│   └── Dockerfile
-├── interface/
-│   ├── dashbord.html        # Dashboard alternativo
-│   ├── start.sh
-│   └── Dockerfile
-├── test/
-│   ├── main.go              # Suite de testes de integração interativos
-│   └── Dockerfile
-├── docker-compose.yml       # Orquestração completa do sistema
-├── go.mod
-└── comandos.txt             # Referência de comandos docker para execução manual
-```
+![Fluxo de Consenso](img/diagramas/fluxo-consenso.png)
+
+O proponente executa as seguintes etapas ao registrar um pagamento ou laudo:
+
+1. Verifica saldo (para pagamentos)
+2. Monta a transação e minera o bloco localmente (PoW)
+3. Armazena um canal de votos em `PendingConsensus[hash]`
+4. Propaga `BLOCO_PROPOSTA` para todos os peers via TCP
+5. Conta seu próprio voto como **aceite automático**
+6. Aguarda votos por até **5 segundos**
+   - Se o timeout expirar sem resposta de um peer, aquele peer é contado como aceite implícito (mesmo comportamento do Ricart ao perder peer durante REQUEST)
+7. Se `aceitos >= quorum (2/3)`: confirma o bloco, propaga `BLOCO` final
+8. Se `aceitos < quorum`: faz rollback (`RemoverUltimoBloco`) e retorna erro
+
+### Quorum
+
+Com 3 zonas: `quorum = (3 × 2) / 3 = 2`. Ou seja, são necessários pelo menos 2 votos de aceite (incluindo o próprio proponente).
 
 ---
 
-## Pré-requisitos
+## Validação de bloco recebido
 
-- [Docker](https://docs.docker.com/get-docker/) >= 20.x
-- [Docker Compose](https://docs.docker.com/compose/) >= 2.x
-- Go >= 1.21 (apenas para rodar os testes localmente sem Docker)
+![Validação de Bloco Recebido](img/diagramas/validacao-bloco.png)
 
----
+Ao receber `BLOCO_PROPOSTA`, cada peer executa em sequência:
 
-## Executando com Docker Compose
+1. **Assinatura válida?** — verifica se o bloco veio de um peer legítimo
+2. **TxID já existe?** — índice em memória de hashes vistos; rejeita replay de transação
+3. **Hash e PoW válidos?** — `calcularHash(bloco) == bloco.Hash` e prefixo `"00"`
+4. **Encadeamento correto?** — `bloco.Index == topo+1` e `bloco.HashAnterior == topo.Hash`
+5. **Saldo suficiente?** — apenas para `PAGAMENTO`; consulta a chain local
 
-A forma mais simples de subir todo o sistema (3 peers, 3 sensores, 3 drones, interface, teste):
-
-```bash
-# Sobe o sistema normalmente (sem o teste)
-docker compose up -d
-
-# Entra no teste interativo (em outro terminal)
-docker compose run --rm teste
-```
-
-Isso sobe os seguintes serviços:
-
-| Serviço | Zona | TCP | HTTP |
-|---|---|---|---|
-| peer1 | NORTE | 9090 | 8081 |
-| peer2 | SUL | 9091 | 8082 |
-| peer3 | LESTE | 9092 | 8083 |
-| sensor-norte-1 | NORTE | — | — |
-| sensor-sul-1 | SUL | — | — |
-| sensor-leste-1 | LESTE | — | — |
-| drone-norte-1/2/3 | NORTE | — | — |
-|Interface|todas|—|3000|
-|Testes|todas|—|—|
-
-Para vizualizar a interface basta abrir o caminho http://localhost:3000 
- 
-
-Para derrubar:
-
-```bash
-docker compose down
-```
+Se todas as verificações passarem, o peer aceita o bloco na sua chain local e envia `VOTO_CONSENSO{Aceito: true}`. Qualquer falha resulta em `VOTO_CONSENSO{Aceito: false, Motivo: "..."}`.
 
 ---
 
-## Executando Manualmente via Docker Hub
+## Endpoints HTTP
 
-Para executar em máquinas separadas ou com controle individual de cada container, substitua `<IP>` pelo endereço da máquina host.
+Todos os endpoints são públicos (sem autenticação) e retornam JSON. Qualquer participante do consórcio pode auditar qualquer nó.
 
-**Peers (zonas):**
+| Endpoint | Método | Descrição |
+|---|---|---|
+| `/status` | GET | Estado completo: zona, Ricart, drones, fila, peers, ledger com saldos |
+| `/ledger` | GET | Arquivo `ledger.json` bruto para auditoria externa |
+| `/validate` | GET | Verifica integridade da chain local (encadeamento de hashes) |
 
-```bash
-# NORTE
-docker run --rm \
-  -e PEARS="<IP>:9092,<IP>:9091" \
-  -e MY_ADDR="<IP>:9090" \
-  -e ZONA="NORTE" \
-  -e HTTP_PORT="8080" \
-  -p 9090:9090 -p 8080:8080 \
-  tonito12/zona:v1
+### Exemplo de resposta do `/validate`
 
-# SUL
-docker run --rm \
-  -e PEARS="<IP>:9090,<IP>:9092" \
-  -e MY_ADDR="<IP>:9091" \
-  -e ZONA="SUL" \
-  -e HTTP_PORT="8080" \
-  -p 9091:9090 -p 8081:8080 \
-  tonito12/zona:v1
-
-# LESTE
-docker run --rm \
-  -e PEARS="<IP>:9090,<IP>:9091" \
-  -e MY_ADDR="<IP>:9092" \
-  -e ZONA="LESTE" \
-  -e HTTP_PORT="8080" \
-  -p 9092:9090 -p 8082:8080 \
-  tonito12/zona:v1
-```
-
-**Drones:**
-
-```bash
-docker run -e DRONE_ID="DRONE-NORTE-01" -e SERVIDOR="<IP>:9090" tonito12/drones:v1
-docker run -e DRONE_ID="DRONE-SUL-01"   -e SERVIDOR="<IP>:9091" tonito12/drones:v1
-docker run -e DRONE_ID="DRONE-LESTE-01" -e SERVIDOR="<IP>:9092" tonito12/drones:v1
-```
-
-**Sensores:**
-
-```bash
-docker run \
-  -e SENSOR_ID="sensor-norte-1" \
-  -e ZONA="NORTE" \
-  -e SERVIDOR="<IP>:9090" \
-  tonito12/sensores-zona:v1
-```
-
-**Frontend (dashboard):**
-
-```bash
-docker run \
-  -e PEER_NORTE="<IP>:8080" \
-  -e PEER_SUL="<IP>:8081" \
-  -e PEER_LESTE="<IP>:8082" \
-  -p 3000:80 \
-  tonito12/interface:v1
-```
-
-Acesse o dashboard em `http://localhost:3000`.
-
----
-
-## Testes
-
-A suite de testes de integração (`test/main.go`) permite validar o comportamento do sistema com múltiplos cenários de carga.
-
-
-**Rodando via Docker:**
-
-```bash
-docker run -it --rm \
-  -e PEER1=<IP>:9090 \
-  -e PEER2=<IP>:9091 \
-  -e PEER3=<IP>:9092 \
-  tonito12/test-zonas:v2
-```
-
-O teste mede latência de resposta por peer, taxa de sucesso e gera um relatório com estatísticas (min/max/média/desvio padrão).
-
----
-
-## API HTTP
-
-Cada peer expõe um endpoint HTTP para consulta de status:
-
-```
-GET http://<host>:<porta>/status
-```
-
-**Exemplo de resposta:**
-
+Chain íntegra:
 ```json
 {
   "zona": "NORTE",
-  "ricart": "LIVRE",
-  "drones": [
-    {
-      "id": "NORTE-drone-01",
-      "status": "livre",
-      "zona_base": "NORTE",
-      "zona_atual": "NORTE"
-    }
-  ],
-  "fila": [],
-  "peers": [
-    { "zona": "SUL",   "vivo": true },
-    { "zona": "LESTE", "vivo": true }
-  ],
-  "drones_gerenciados": ["NORTE-drone-01", "NORTE-drone-02", "NORTE-drone-03"]
+  "valida": true,
+  "total_blocos": 7
 }
 ```
 
-O campo `ricart` indica o estado atual da exclusão mútua: `LIVRE`, `QUERENDO` ou `NA_SECAO`.
-
----
-
-## Protocolo de Mensagens TCP
-
-A comunicação entre todos os nós (peers, sensores e drones) é feita via TCP com mensagens JSON delimitadas por `\n`.
-
-A primeira mensagem enviada por qualquer cliente deve ser uma identificação:
-
-```
-IAM:SENSOR:<sensor_id>:<zona>
-IAM:DRONE:<drone_id>
-IAM:ZONA:<zona_id>
+Chain adulterada (HTTP 409):
+```json
+{
+  "zona": "NORTE",
+  "valida": false,
+  "total_blocos": 7,
+  "motivo": "encadeamento de hashes quebrado — chain adulterada"
+}
 ```
 
-**Tipos de mensagem entre peers:**
+### Auditoria periódica automática
 
-| Tipo | Descrição |
-|---|---|
-| `HEARTBEAT` | Verificação de liveness |
-| `REQUISICAO_DRONE` | Sensor solicita despacho de drone |
-| `DESPACHAR_DRONE` | Zona instrui um drone a partir para missão |
-| `REQUEST` | Ricart-Agrawala: pedido de acesso exclusivo |
-| `REPLY` | Ricart-Agrawala: concessão de acesso |
-| `RELEASE` | Ricart-Agrawala: liberação do recurso |
-| `DRONE_UPDATE` | Atualização de estado de drone replicada entre peers |
-| `SYNC_REQUEST` / `SYNC_RESPONSE` | Sincronização de estado ao conectar |
-| `MISSAO_CONCLUIDA` | Drone reporta fim de missão à zona |
-| `MISSAO_CONCLUIDA_ACK` | Zona de failover confirma missão à zona base |
-| `GET_DRONES` / `DRONES_RESPONSE` | Consulta de drones disponíveis |
+Cada peer executa uma goroutine que valida a chain a cada 30 segundos e imprime nos logs:
+
+```
+[AUDIT] ✔ Chain íntegra — 7 bloco(s) verificados
+[AUDIT] ✗ ADULTERAÇÃO DETECTADA — chain local inválida!
+```
 
 ---
 
-## Variáveis de Ambiente
+## Execução com Docker
 
-### Peer (zona)
+### Pré-requisitos
 
-| Variável | Descrição | Exemplo |
-|---|---|---|
-| `ZONA` | Identificador da zona | `NORTE` |
-| `MY_ADDR` | Endereço TCP próprio | `peer1:9090` |
-| `PEARS` | Lista de peers separados por vírgula | `peer2:9090,peer3:9090` |
-| `HTTP_PORT` | Porta do servidor HTTP de status | `8080` |
+- Docker ≥ 20.10
+- Docker Compose ≥ 2.0
 
-### Drone
-
-| Variável | Descrição | Exemplo |
-|---|---|---|
-| `DRONE_ID` | Identificador único do drone | `NORTE-drone-01` |
-| `SERVIDOR` | Endereço TCP do peer base | `peer1:9090` |
-
-### Sensor
-
-| Variável | Descrição | Exemplo |
-|---|---|---|
-| `SENSOR_ID` | Identificador único do sensor | `sensor-norte-1` |
-| `ZONA` | Zona onde o sensor opera | `NORTE` |
-| `SERVIDOR` | Endereço TCP do peer da zona | `peer1:9090` |
-
----
-
-## Autor
-
-<table>
-  <tr>
-    <td align="center" width="150px">
-      <a href="https://github.com/antoniomedeiross">
-        <img src="https://github.com/antoniomedeiross.png" width="100px;" alt="Foto de Antonio Medeiros"/><br />
-        <sub><b>Antonio Medeiros</b></sub>
-      </a>
-      <br>
-      <br>
-      <a href="https://linkedin.com/in/antoniomedeiross" title="LinkedIn">
-        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg" width="30px"/>
-      </a>
-    </td>
-    <td>
-      <strong>Antônio Aparecido Medeiros Santana</strong><br>
-      Universidade Estadual de Feira de Santana — UEFS<br>
-      Departamento de Tecnologia — DTEC<br>
-      antoniomedeirosdev@gmail.com
-    </td>
-  </tr>
-</table>
----
-
-## Segurança — Gestão de Ativos e Prevenção de Duplo Gasto (P3)
-
-### Assinatura Digital Ed25519
-
-Cada zona gera (ou carrega) um par de chaves **Ed25519** na inicialização (`zona/ledger/identidade.go`). Toda transação de **PAGAMENTO** é assinada com a chave privada da zona emissora antes de entrar no processo de consenso.
-
-Os outros peers **verificam a assinatura** ao receber um `BLOCO_PROPOSTA` ou um `BLOCO` propagado. Blocos com assinatura ausente, inválida ou de chave desconhecida são **rejeitados antes mesmo do PoW ser verificado**.
-
-A chave pública é trocada automaticamente no handshake `SYNC_REQUEST`.
-
-### Prevenção de Duplo Gasto (TxID)
-
-Cada transação recebe um **UUID v4 único** (`tx_id`) gerado com `crypto/rand`. A chain mantém um índice em memória de todos os TxIDs já registrados. Qualquer tentativa de inserir uma transação com TxID repetido — mesmo em nós diferentes simultaneamente — é **detectada e rejeitada** pelo validador local.
-
-O TxID também entra no cálculo do hash do bloco, tornando impossível reutilizá-lo sem invalidar o PoW.
-
-### Endpoints de auditoria adicionados
-
-| Endpoint | Descrição |
-|---|---|
-| `GET /seguranca` | Chave pública da zona, validade da chain, peers conhecidos |
-| `GET /validate` | Valida o encadeamento de hashes da chain completa |
-
-### Testes de segurança
+### Subir o sistema completo
 
 ```bash
-# Executa a suite de testes de segurança (requer sistema rodando)
-docker compose --profile teste-seguranca run --rm teste-seguranca
+docker compose up --build
 ```
 
-Cenários cobertos:
+Isso sobe os 3 peers, 3 sensores e 3 drones. O dashboard fica disponível em `http://localhost:3000`.
 
-1. **Dinheiro falso** — peer malicioso injeta bloco de PAGAMENTO com créditos inexistentes e assinatura de chave desconhecida. O sistema deve **rejeitar** o bloco nos dois pontos: via `BLOCO_PROPOSTA` (consenso) e via `BLOCO` direto (validação local).
+### Portas expostas
 
-2. **Duplo gasto** — o mesmo TxID é enviado para dois peers diferentes ao mesmo tempo. O índice de TxIDs garante que apenas **uma** ocorrência seja aceita.
+| Container | Zona | TCP (P2P) | HTTP (API) |
+|---|---|---|---|
+| `peer1` | NORTE | `9090` | `8081` |
+| `peer2` | SUL | `9091` | `8082` |
+| `peer3` | LESTE | `9092` | `8083` |
+| `interface` | — | — | `3000` |
 
-3. **Adulteração de bloco** — demonstra matematicamente que alterar qualquer campo de um bloco existente muda o hash, quebrando o encadeamento com todos os blocos subsequentes.
+### Verificar ledger de um peer
+
+```bash
+curl http://localhost:8081/status | jq '.ledger'
+curl http://localhost:8082/ledger
+curl http://localhost:8083/validate
+```
+
+### Rodar os testes automatizados
+
+```bash
+docker compose --profile teste up teste
+```
+
+### Derrubar um peer durante a demo
+
+```bash
+docker stop peer3   # derruba LESTE
+# sistema continua operando com NORTE e SUL
+docker start peer3  # reconecta; sync automático via SYNC_REQUEST
+```
+
+---
+
+## Variáveis de ambiente
+
+| Variável | Exemplo | Descrição |
+|---|---|---|
+| `ZONA` | `NORTE` | Identificador da zona (`NORTE`, `SUL` ou `LESTE`) |
+| `PEARS` | `peer2:9090,peer3:9090` | Endereços TCP dos outros peers |
+| `MY_ADDR` | `peer1:9090` | Endereço TCP deste peer (evita auto-conexão) |
+| `HTTP_PORT` | `8080` | Porta do servidor HTTP interno |
+
+---
+
+## Estrutura de pacotes
+
+```
+zona/
+├── server/        # main, loop TCP (conectarAosPeers), HTTP (iniciarHTTP)
+│                  # Injeta ProporBlocoFn, PropagaBloco, TotalPeers no ledger
+├── handler/       # ProcessarConexoes — trata conexões TCP incoming
+│                  # Casos: BLOCO_PROPOSTA, VOTO_CONSENSO, BLOCO, DESPACHAR_DRONE...
+├── ledger/
+│   ├── block.go       # Bloco, Transacao, Minerar, PoW (dificuldade 2), calcularHash
+│   ├── chain.go       # Chain, AdicionarBloco, AceitarBlocoExterno, SaldoZona,
+│   │                  # ValidarChain, RemoverUltimoBloco
+│   ├── ledger.go      # RegistrarPagamento, RegistrarLaudo, IniciarLedger
+│   │                  # ProporBlocoFn (injetada pelo server), PropagaBloco
+│   └── persistence.go # CarregarLedger, SalvarBloco (ledger.json)
+├── ricart/        # Ricart-Agrawala — exclusão mútua para alocação de drone
+├── repo/          # Estado local: drones, peers, fila de requisições
+├── models/        # Mensagem, Drone, Requisicao, VotoConsensus, ...
+└── handler/
+
+blockchain/
+├── blockchain.go  # Chain e Bloco do package blockchain (usados pelo consensus)
+└── consensus.go   # ProposeAndMine, PendingConsensus, ValidarBlocoCandidato
+```
+
+O package `ledger/` é a fonte de verdade para o estado financeiro. O `blockchain/` contém a lógica de votação (`PendingConsensus`). O `server.go` conecta os dois via injeção de dependência (`ProporBlocoFn`), evitando import circular.
+
+---
+
+## Testes manuais relevantes
+
+### Teste de adulteração (barema: Log Imutável)
+
+```bash
+# 1. Pare o peer3 temporariamente
+docker stop peer3
+
+# 2. Edite manualmente o ledger.json do peer3
+#    Mude qualquer caractere de um campo "hash" ou "hash_anterior"
+docker run --rm -v blockchain_peer3_data:/data alpine \
+  sh -c 'sed -i "s/\"hash\":\"00/\"hash\":\"ff/" /data/ledger.json'
+
+# 3. Suba o peer3 novamente
+docker start peer3
+
+# 4. Consulte /validate — deve retornar 409
+curl http://localhost:8083/validate
+# {"zona":"LESTE","valida":false,"total_blocos":5,"motivo":"encadeamento de hashes quebrado — chain adulterada"}
+
+# 5. No log do peer3, em até 30s aparece:
+# [AUDIT] ✗ ADULTERAÇÃO DETECTADA — chain local inválida!
+```
+
+### Teste de duplo gasto (barema: Prevenção de Duplo Gasto)
+
+```bash
+# Dispara duas requisições simultâneas da mesma zona com saldo para apenas uma
+curl -X POST http://localhost:8081/requisitar -d '{"zona":"NORTE","ocorrencia":"teste"}' &
+curl -X POST http://localhost:8081/requisitar -d '{"zona":"NORTE","ocorrencia":"teste"}' &
+wait
+# Apenas uma deve ser confirmada; a segunda retorna erro de saldo insuficiente
+# Confirmar no ledger que apenas um bloco de PAGAMENTO foi adicionado
+curl http://localhost:8081/status | jq '[.ledger[] | select(.transacao.tipo=="PAGAMENTO" and .transacao.zona_id=="NORTE")]'
+```
+
+### Consistência entre dois nós
+
+```bash
+# Consulta simultânea em dois peers distintos
+curl http://localhost:8081/status | jq '.ledger | length'
+curl http://localhost:8082/status | jq '.ledger | length'
+# Devem retornar o mesmo valor após convergência
+```
