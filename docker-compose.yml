@@ -1,0 +1,183 @@
+version: '3.8'
+services:
+  peer1:
+    build:
+      context: .
+      dockerfile: zona/server/Dockerfile
+    container_name: peer1
+    ports:
+      - "9090:9090"
+      - "8081:8080"
+    environment:
+      - PEARS=peer2:9090,peer3:9090
+      - MY_ADDR=peer1:9090
+      - ZONA=NORTE
+      - HTTP_PORT=8080
+    networks:
+      - pbl-network
+
+  peer2:
+    build:
+      context: .
+      dockerfile: zona/server/Dockerfile
+    container_name: peer2
+    ports:
+      - "9091:9090"
+      - "8082:8080"
+    environment:
+      - PEARS=peer1:9090,peer3:9090
+      - MY_ADDR=peer2:9090
+      - ZONA=SUL
+      - HTTP_PORT=8080
+    networks:
+      - pbl-network
+
+  peer3:
+    build:
+      context: .
+      dockerfile: zona/server/Dockerfile
+    container_name: peer3
+    ports:
+      - "9092:9090"
+      - "8083:8080"
+    environment:
+      - PEARS=peer1:9090,peer2:9090
+      - MY_ADDR=peer3:9090
+      - ZONA=LESTE
+      - HTTP_PORT=8080
+    networks:
+      - pbl-network
+
+  sensor-norte-1:
+    build:
+      context: .
+      dockerfile: sensores/Dockerfile
+    environment:
+      - SENSOR_ID=sensor-norte-1
+      - ZONA=NORTE
+      - SERVIDOR=peer1:9090
+    depends_on:
+      - peer1
+    networks:
+      - pbl-network
+
+  sensor-sul-1:
+    build:
+      context: .
+      dockerfile: sensores/Dockerfile
+    environment:
+      - SENSOR_ID=sensor-sul-1
+      - ZONA=SUL
+      - SERVIDOR=peer2:9090
+    depends_on:
+      - peer2
+    networks:
+      - pbl-network
+
+  sensor-leste-1:
+    build:
+      context: .
+      dockerfile: sensores/Dockerfile
+    environment:
+      - SENSOR_ID=sensor-leste-1
+      - ZONA=LESTE
+      - SERVIDOR=peer3:9090
+    depends_on:
+      - peer3
+    networks:
+      - pbl-network
+
+  drone-norte-1:
+    build:
+      context: .
+      dockerfile: drones/Dockerfile
+    environment:
+      - DRONE_ID=NORTE-drone-01
+      - SERVIDOR=peer1:9090
+    depends_on:
+      - peer1
+    networks:
+      - pbl-network
+
+  drone-sul-1:
+    build:
+      context: .
+      dockerfile: drones/Dockerfile
+    environment:
+      - DRONE_ID=SUL-drone-1
+      - SERVIDOR=peer2:9090
+    depends_on:
+      - peer2
+    networks:
+      - pbl-network
+
+  drone-leste-1:
+    build:
+      context: .
+      dockerfile: drones/Dockerfile
+    environment:
+      - DRONE_ID=LESTE-drone-1
+      - SERVIDOR=peer3:9090
+    depends_on:
+      - peer3
+    networks:
+      - pbl-network
+
+  interface:
+    build:
+      context: ./interface
+      dockerfile: Dockerfile
+    container_name: interface
+    ports:
+      - "3000:80"
+    environment:
+      - PEER_NORTE=localhost:8081
+      - PEER_SUL=localhost:8082
+      - PEER_LESTE=localhost:8083
+    depends_on:
+      - peer1
+      - peer2
+      - peer3
+    networks:
+      - pbl-network
+
+  teste:
+    build:
+      context: .
+      dockerfile: test/Dockerfile
+    container_name: teste
+    environment:
+      - PEER1=peer1:9090
+      - PEER2=peer2:9090
+      - PEER3=peer3:9090
+    depends_on:
+      - peer1
+      - peer2
+      - peer3
+    networks:
+      - pbl-network
+    profiles:
+      - teste
+
+  teste-seguranca:
+    build:
+      context: .
+      dockerfile: test/Dockerfile.security
+    container_name: teste-seguranca
+    environment:
+      - PEER1=peer1:9090
+      - PEER2=peer2:9090
+      - PEER1_HTTP=peer1:8080
+      - PEER2_HTTP=peer2:8080
+    depends_on:
+      - peer1
+      - peer2
+      - peer3
+    networks:
+      - pbl-network
+    profiles:
+      - teste-seguranca
+
+networks:
+  pbl-network:
+    driver: bridge

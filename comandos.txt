@@ -1,0 +1,94 @@
+PEER NORTE 
+docker run --rm -e PEARS="192.168.1.120:9092,192.168.1.120:9091" -e MY_ADDR="192.168.1.120:9090" -e ZONA="NORTE" -p 9090:9090  -p 8080:8080 -e HTTP_PORT="8080" tonito12/zona-chain:v1 
+
+PEER SUL 
+docker run --rm -e PEARS="192.168.1.120:9090,192.168.1.120:9092" -e MY_ADDR="192.168.1.120:9091" -e ZONA="SUL"   -p 9091:9090  -p 8081:8080 -e HTTP_PORT="8080" tonito12/zona-chain:v1 
+
+PEER LESTE
+docker run --rm -e PEARS="192.168.1.120:9090,192.168.1.120:9091" -e MY_ADDR="192.168.1.120:9092" -e ZONA="LESTE" -p 9092:9090  -p 8082:8080 -e HTTP_PORT="8080"  tonito12/zona-chain:v1 
+
+DRONE
+docker run -e DRONE_ID="DRONE-NORTE-01" -e SERVIDOR="192.168.1.120:9090" tonito12/drones-chain:v1
+docker run -e DRONE_ID="DRONE-SUL-01" -e SERVIDOR="192.168.1.120:9091" tonito12/drones-chain:v1
+docker run -e DRONE_ID="DRONE-LESTE-01" -e SERVIDOR="192.168.1.120:9092" tonito12/drones-chain:v1
+
+SENSOR
+docker run -e SENSOR_ID="sensor-norte-1" -e ZONA="NORTE" -e SERVIDOR="192.168.1.120:9090" tonito12/sensores-chain:v1
+
+INTERFACE 
+docker run -e PEER_NORTE="192.168.1.120:8080" -e PEER_SUL="192.168.1.120:8081" -e PEER_LESTE="192.168.1.120:8082" -p 3000:80 tonito12/front-chain:v1
+
+docker exec -it peer1 cat ledger.json
+----------------------------------------------------------------------------------
+
+
+PEER NORTE 
+docker run -e PEARS="10.65.139.176:9092,10.65.139.176:9091" -e MY_ADDR="10.65.139.176:9090" -e ZONA="NORTE" -p 9090:9090  -p 8080:8080 -e HTTP_PORT="8080" tonito12/zona:v1 
+
+PEER SUL 
+docker run -e PEARS="10.65.139.176:9090,10.65.139.176:9092" -e MY_ADDR="10.65.139.176:9091" -e ZONA="SUL"   -p 9091:9090  -p 8081:8080 -e HTTP_PORT="8080" tonito12/zona:v1 
+
+PEER LESTE
+docker run -e PEARS="10.65.139.176:9090,10.65.139.176:9091" -e MY_ADDR="10.65.139.176:9092" -e ZONA="LESTE" -p 9092:9090  -p 8082:8080 -e HTTP_PORT="8080"  tonito12/zona:v1 
+
+DRONE
+docker run -e DRONE_ID="DRONE-NORTE-01" -e SERVIDOR="10.65.139.176:9090" tonito12/drones:v1
+
+SENSOR
+docker run -e SENSOR_ID="sensor-leste-1" -e ZONA="LESTE" -e SERVIDOR="10.65.139.176:9090" tonito12/sensores-zona:v1
+
+INTERFACE 
+docker run -e PEER_NORTE="10.65.139.176:8080" -e PEER_SUL="10.65.139.176:8081" -e PEER_LESTE="10.65.139.176:8082" -p 3000:80 tonito12/interface:v1
+
+
+
+TESTE 
+go run test/main.go -peer1=localhost:9090 -peer2=localhost:9091 -peer3=localhost:9092 
+
+docker run -it --rm \
+  -e PEER1=192.168.0.103:9090 \
+  -e PEER2=192.168.0.103:9091 \
+  -e PEER3=192.168.0.103:9092 \
+  tonito12/test-zonas:v1
+
+===========================================================================================================
+
+PEER NORTE 
+docker run --rm -e PEARS="192.168.0.103:9092,192.168.0.103:9091" -e MY_ADDR="192.168.0.103:9090" -e ZONA="NORTE" -p 9090:9090  -p 8080:8080 -e HTTP_PORT="8080" tonito12/zona:v1 
+
+PEER SUL 
+docker run --rm -e PEARS="192.168.0.103:9090,192.168.0.103:9092" -e MY_ADDR="192.168.0.103:9091" -e ZONA="SUL"   -p 9091:9090  -p 8081:8080 -e HTTP_PORT="8080" tonito12/zona:v1 
+
+PEER LESTE
+docker run --rm -e PEARS="192.168.0.103:9090,192.168.0.103:9091" -e MY_ADDR="192.168.0.103:9092" -e ZONA="LESTE" -p 9092:9090  -p 8082:8080 -e HTTP_PORT="8080"  tonito12/zona:v1 
+
+DRONE
+docker run -e DRONE_ID="DRONE-NORTE-01" -e SERVIDOR="172.16.103.14:9090" tonito12/drones:v1
+docker run -e DRONE_ID="DRONE-SUL-01" -e SERVIDOR="172.16.103.13:9091" tonito12/drones:v1
+docker run -e DRONE_ID="DRONE-LESTE-01" -e SERVIDOR="172.16.103.12:9092" tonito12/drones:v1
+
+SENSOR
+docker run -e SENSOR_ID="sensor-norte-1" -e ZONA="NORTE" -e SERVIDOR="172.16.103.14:9090" tonito12/sensores-zona:v1
+docker run -e SENSOR_ID="sensor-sul-1" -e ZONA="SUL" -e SERVIDOR="172.16.103.13:9091" tonito12/sensores-zona:v1
+docker run -e SENSOR_ID="sensor-leste-1" -e ZONA="LESTE" -e SERVIDOR="172.16.103.12:9092" tonito12/sensores-zona:v1
+
+
+INTERFACE 
+docker run -e PEER_NORTE="172.16.103.14:8080" -e PEER_SUL="172.16.103.13:8081" -e PEER_LESTE="172.16.103.12:8082" -p 3000:80 tonito12/interface:v1
+
+
+------------------------------------------------------------------------------------------------------------
+
+
+
+TESTE 
+go run test/main.go -peer1=localhost:9090 -peer2=localhost:9091 -peer3=localhost:9092 
+
+docker run -it --rm \
+  -e PEER1=172.16.103.14:9090 \
+  -e PEER2=172.16.103.13:9091 \
+  -e PEER3=172.16.103.12:9092 \
+  tonito12/test-zonas:v1
+
+  
+
